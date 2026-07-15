@@ -19,7 +19,7 @@ type Server struct {
 }
 
 func NewServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
+	port, _ := strconv.Atoi(os.Getenv("APP_PORT"))
 	NewServer := &Server{
 		port: port,
 

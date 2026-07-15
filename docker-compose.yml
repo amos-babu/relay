@@ -1,15 +1,18 @@
 services:
-  psql_bp:
+  postgres:
     image: postgres:latest
+    container_name: relay-postgres
     restart: unless-stopped
+
     environment:
       POSTGRES_DB: ${BLUEPRINT_DB_DATABASE}
       POSTGRES_USER: ${BLUEPRINT_DB_USERNAME}
       POSTGRES_PASSWORD: ${BLUEPRINT_DB_PASSWORD}
+
     ports:
       - "${BLUEPRINT_DB_PORT}:5432"
     volumes:
-      - psql_volume_bp:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
 volumes:
-  psql_volume_bp:
+  postgres_data:

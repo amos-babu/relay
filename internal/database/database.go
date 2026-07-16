@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"relay/internal/config"
 	"strconv"
 	"time"
 
@@ -52,6 +53,34 @@ func New() Service {
 		db: db,
 	}
 	return dbInstance
+}
+
+func Connect(cfg config.DatabaseConfig) (*sql.DB, error) {
+	dsn := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		cfg.Host,
+		cfg.Port,
+		cfg.User,
+		cfg.Password,
+		cfg.Name,
+		cfg.SSLMode,
+	)
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+
 }
 
 // Health checks the health of the database connection by pinging the database.

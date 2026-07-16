@@ -18,5 +18,4 @@ type DatabaseConfig struct {
 	Password string
 	Name     string
 	SSLMode  string
-	Schema   string
 }

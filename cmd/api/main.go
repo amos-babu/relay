@@ -9,7 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"relay/internal/server"
+	"relay/internal/config"
+	"relay/internal/database"
 )
 
 func gracefulShutdown(apiServer *http.Server, done chan bool) {
@@ -39,20 +40,34 @@ func gracefulShutdown(apiServer *http.Server, done chan bool) {
 
 func main() {
 
-	server := server.NewServer()
+	// server := server.NewServer()
 
-	// Create a done channel to signal when the shutdown is complete
-	done := make(chan bool, 1)
+	// // Create a done channel to signal when the shutdown is complete
+	// done := make(chan bool, 1)
 
-	// Run graceful shutdown in a separate goroutine
-	go gracefulShutdown(server, done)
+	// // Run graceful shutdown in a separate goroutine
+	// go gracefulShutdown(server, done)
 
-	err := server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		panic(fmt.Sprintf("http server error: %s", err))
+	// err := server.ListenAndServe()
+	// if err != nil && err != http.ErrServerClosed {
+	// 	panic(fmt.Sprintf("http server error: %s", err))
+	// }
+
+	// // Wait for the graceful shutdown to complete
+	// <-done
+	// log.Println("Graceful shutdown complete.")
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	// Wait for the graceful shutdown to complete
-	<-done
-	log.Println("Graceful shutdown complete.")
+	db, err := database.Connect(cfg.DB)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer db.Close()
+
+	fmt.Println("✅ Database connected")
 }

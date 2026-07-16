@@ -24,7 +24,6 @@ func Load() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", "relay"),
 			Name:     getEnv("DB_DATABASE", "relay"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
-			Schema:   getEnv("DB_SCHEMA", "public"),
 		},
 	}
 

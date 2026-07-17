@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrNotImplemented = errors.New("not implemented")
@@ -30,7 +33,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	$1, $2, $3) 
 	RETURNING id, created_at, updated_at;`
 
-	return r.db.QueryRowContext(
+	err := r.db.QueryRowContext(
 		ctx,
 		query,
 		user.Name,
@@ -41,6 +44,18 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.ErrEmailAlreadyExists
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {

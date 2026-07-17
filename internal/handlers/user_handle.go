@@ -2,7 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
+	"relay/internal/domain"
+	"relay/internal/response"
 	"relay/internal/services"
 )
 
@@ -38,8 +42,39 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, domain.ErrEmailAlreadyExists) {
+			if encodeErr := response.JSON(
+				w,
+				http.StatusConflict,
+				response.ErrorResponse{
+					Error: "email already exists",
+				},
+			); encodeErr != nil {
+				log.Printf("failed to encode response: %v", encodeErr)
+			}
+			return
+		}
+
+		if encodeErr := response.JSON(
+			w,
+			http.StatusInternalServerError,
+			response.ErrorResponse{
+				Error: "internal server error",
+			},
+		); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
+
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
+
+	if err := response.JSON(
+		w,
+		http.StatusCreated,
+		response.SuccessResponse{
+			Message: "user registered successfully",
+		},
+	); err != nil {
+		log.Printf("failed to encode response: %v", err)
+	}
 }

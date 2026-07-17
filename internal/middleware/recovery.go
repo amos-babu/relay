@@ -19,9 +19,11 @@ func Rocovery(next http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 
-				json.NewEncoder(w).Encode(ErroResponse{
+				if err := json.NewEncoder(w).Encode(ErroResponse{
 					Error: "Internal Server Error",
-				})
+				}); err != nil {
+					log.Printf("failed to encode error response: %v", err)
+				}
 			}
 		}()
 

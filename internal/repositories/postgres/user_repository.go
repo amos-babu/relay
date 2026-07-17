@@ -26,10 +26,8 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	const query = `INSERT INTO users (
 	name, 
 	email, 
-	password_hash, 
-	created_at, 
-	updated_at) VALUES (
-	$1, $2, $3, $4, $5) 
+	password_hash) VALUES (
+	$1, $2, $3) 
 	RETURNING id, created_at, updated_at;`
 
 	return r.db.QueryRowContext(

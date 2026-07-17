@@ -28,7 +28,7 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.App.Name == "" {
-		return nil, fmt.Errorf("App Name is required")
+		return nil, fmt.Errorf("app Name is required")
 	}
 
 	return cfg, nil

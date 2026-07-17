@@ -6,7 +6,7 @@ import (
 )
 
 type HealthResponce struct {
-	Status string `json:""status"`
+	Status string `json:"status"`
 }
 
 func Health(w http.ResponseWriter, r *http.Request) {
@@ -16,5 +16,8 @@ func Health(w http.ResponseWriter, r *http.Request) {
 		Status: "ok",
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }

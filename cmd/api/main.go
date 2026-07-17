@@ -8,6 +8,7 @@ import (
 	"relay/internal/app"
 	"relay/internal/config"
 	"relay/internal/database"
+	"relay/internal/handlers"
 	"relay/internal/repositories/postgres"
 	"relay/internal/router"
 	"relay/internal/services"
@@ -27,9 +28,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("failed to close the database: %v", err)
+		}
+	}()
 
 	fmt.Println("✅ Database connected")
+
+	//app
+	application := app.New(cfg, db)
 
 	// Repository Injections
 	userRepo := postgres.NewUserRepository(db)
@@ -37,9 +45,11 @@ func main() {
 	// Service Injections
 	userService := services.NewUserService(userRepo)
 
-	application := app.New(cfg, db)
+	// Service Injections
+	userHandler := handlers.NewUserHandler(userService)
 
-	router.Register(application)
+	//router
+	router.Register(application, userHandler)
 
 	log.Printf("Starting server on :%s", cfg.App.Port)
 

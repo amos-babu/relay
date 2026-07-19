@@ -20,10 +20,10 @@ func NewUserService(repo repositories.UserRepository) *UserService {
 	}
 }
 
-func (s *UserService) Register(ctx context.Context, name string, email string, password string) error {
+func (s *UserService) Register(ctx context.Context, name string, email string, password string) (*models.User, error) {
 	// validation
 	if err := validation.ValidateRegistraion(name, email, password); err != nil {
-		return err
+		return nil, err
 	}
 
 	// normalize email
@@ -33,7 +33,7 @@ func (s *UserService) Register(ctx context.Context, name string, email string, p
 	// hash password
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// create user
@@ -44,5 +44,8 @@ func (s *UserService) Register(ctx context.Context, name string, email string, p
 	}
 
 	// save user
-	return s.repo.Create(ctx, user)
+	if err := s.repo.Create(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }

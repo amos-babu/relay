@@ -26,6 +26,12 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
+type RegisterResponse struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
@@ -40,12 +46,38 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.service.Register(
+	user, err := h.service.Register(
 		r.Context(),
 		req.Name,
 		req.Email,
 		req.Password,
 	)
+
+	if err != nil {
+		if err := response.JSON(
+			w,
+			http.StatusInternalServerError,
+			response.ErrorResponse{
+				Error: "internal server error",
+			}); err != nil {
+			log.Printf("failed to register: %v", err)
+		}
+		return
+	}
+
+	resp := RegisterResponse{
+		ID:    user.ID,
+		Name:  user.Name,
+		Email: user.Email,
+	}
+
+	if err := response.JSON(
+		w,
+		http.StatusCreated,
+		resp,
+	); err != nil {
+		log.Printf("failed to encode response: %v", err)
+	}
 
 	if err != nil {
 		if errors.Is(err, domain.ErrEmailAlreadyExists) {
@@ -72,15 +104,5 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 
 		return
-	}
-
-	if err := response.JSON(
-		w,
-		http.StatusCreated,
-		response.SuccessResponse{
-			Message: "user registered successfully",
-		},
-	); err != nil {
-		log.Printf("failed to encode response: %v", err)
 	}
 }

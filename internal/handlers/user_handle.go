@@ -30,7 +30,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		err := response.JSON(w, http.StatusBadRequest, response.ErrorResponse{
+			Error: "invalid request body",
+		})
+		if err != nil {
+			log.Printf("failed to encode response: %v", err)
+		}
+
 		return
 	}
 

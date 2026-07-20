@@ -12,6 +12,7 @@ import (
 	"relay/internal/repositories/postgres"
 	"relay/internal/router"
 	"relay/internal/services"
+	"relay/internal/token"
 )
 
 func main() {
@@ -42,8 +43,11 @@ func main() {
 	// Repository Injections
 	userRepo := postgres.NewUserRepository(db)
 
+	// JWT token Service Injections
+	tokenService := token.NewService(cfg.JWT.Secret)
+
 	// Service Injections
-	userService := services.NewUserService(userRepo)
+	userService := services.NewUserService(userRepo, tokenService)
 
 	// Service Injections
 	userHandler := handlers.NewUserHandler(userService)

@@ -6,6 +6,7 @@ import (
 	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
+	"relay/internal/token"
 	"relay/internal/validation"
 	"strings"
 
@@ -13,7 +14,8 @@ import (
 )
 
 type UserService struct {
-	repo repositories.UserRepository
+	repo         repositories.UserRepository
+	tokenService *token.Service
 }
 
 type LoginResult struct {
@@ -21,9 +23,10 @@ type LoginResult struct {
 	Token string
 }
 
-func NewUserService(repo repositories.UserRepository) *UserService {
+func NewUserService(repo repositories.UserRepository, tokenService *token.Service) *UserService {
 	return &UserService{
-		repo: repo,
+		repo:         repo,
+		tokenService: tokenService,
 	}
 }
 
@@ -81,7 +84,10 @@ func (s *UserService) Login(ctx context.Context, email string, password string) 
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	token := "TODO"
+	token, err := s.tokenService.Generate(user.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	//return user in a new loginresult struct
 	return &LoginResult{

@@ -3,6 +3,7 @@ package config
 type Config struct {
 	App AppConfig
 	DB  DatabaseConfig
+	JWT JWTConfig
 }
 
 type AppConfig struct {
@@ -18,4 +19,8 @@ type DatabaseConfig struct {
 	Password string
 	Name     string
 	SSLMode  string
+}
+
+type JWTConfig struct {
+	Secret string
 }

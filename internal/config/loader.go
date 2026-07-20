@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -25,10 +26,17 @@ func Load() (*Config, error) {
 			Name:     getEnv("DB_DATABASE", "relay"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
+		JWT: JWTConfig{
+			Secret: getEnv("JWT_SECRET", ""),
+		},
 	}
 
 	if cfg.App.Name == "" {
 		return nil, fmt.Errorf("app Name is required")
+	}
+
+	if cfg.JWT.Secret == "" {
+		return nil, errors.New("jwt secret is required")
 	}
 
 	return cfg, nil

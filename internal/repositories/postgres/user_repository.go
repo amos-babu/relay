@@ -88,7 +88,39 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*models.User, e
 }
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
-	return nil, ErrNotImplemented
+	const query = `
+	SELECT
+		id,
+		name,
+		email,
+		password_hash,
+		created_at,
+		updated_at
+	FROM users
+	WHERE email = $1;
+	`
+	user := &models.User{}
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		email,
+	).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	return user, nil
 }
 
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {

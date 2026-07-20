@@ -157,3 +157,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+
+func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
+
+}

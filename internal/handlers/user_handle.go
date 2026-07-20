@@ -36,11 +36,10 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		err := response.JSON(w, http.StatusBadRequest, response.ErrorResponse{
+		if encodeErr := response.JSON(w, http.StatusBadRequest, response.ErrorResponse{
 			Error: "invalid request body",
-		})
-		if err != nil {
-			log.Printf("failed to encode response: %v", err)
+		}); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
 		}
 
 		return
@@ -54,14 +53,21 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		if err := response.JSON(
-			w,
-			http.StatusInternalServerError,
-			response.ErrorResponse{
-				Error: "internal server error",
-			}); err != nil {
-			log.Printf("failed to register: %v", err)
+		if errors.Is(err, domain.ErrEmailAlreadyExists) {
+			if encodeErr := response.JSON(w, http.StatusConflict, response.ErrorResponse{
+				Error: "email already exists",
+			}); encodeErr != nil {
+				log.Printf("failed to encode response: %v", encodeErr)
+			}
+			return
 		}
+
+		if encodeErr := response.JSON(w, http.StatusInternalServerError, response.ErrorResponse{
+			Error: "internal server error",
+		}); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
+
 		return
 	}
 
@@ -79,30 +85,4 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to encode response: %v", err)
 	}
 
-	if err != nil {
-		if errors.Is(err, domain.ErrEmailAlreadyExists) {
-			if encodeErr := response.JSON(
-				w,
-				http.StatusConflict,
-				response.ErrorResponse{
-					Error: "email already exists",
-				},
-			); encodeErr != nil {
-				log.Printf("failed to encode response: %v", encodeErr)
-			}
-			return
-		}
-
-		if encodeErr := response.JSON(
-			w,
-			http.StatusInternalServerError,
-			response.ErrorResponse{
-				Error: "internal server error",
-			},
-		); encodeErr != nil {
-			log.Printf("failed to encode response: %v", encodeErr)
-		}
-
-		return
-	}
 }

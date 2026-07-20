@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"errors"
+	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
 	"relay/internal/validation"
@@ -12,6 +14,11 @@ import (
 
 type UserService struct {
 	repo repositories.UserRepository
+}
+
+type LoginResult struct {
+	User  *models.User
+	Token string
 }
 
 func NewUserService(repo repositories.UserRepository) *UserService {
@@ -48,4 +55,37 @@ func (s *UserService) Register(ctx context.Context, name string, email string, p
 		return nil, err
 	}
 	return user, nil
+}
+
+func (s *UserService) Login(ctx context.Context, email string, password string) (*LoginResult, error) {
+	// validation
+	if err := validation.ValidateLogin(email, password); err != nil {
+		return nil, err
+	}
+
+	// normalize email
+	email = strings.TrimSpace(strings.ToLower(email))
+
+	// find the user by calling repository
+	user, err := s.repo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrInvalidCredentials
+		}
+
+		return nil, err
+	}
+
+	//compared hashed stored password with password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		return nil, domain.ErrInvalidCredentials
+	}
+
+	token := "TODO"
+
+	//return user in a new loginresult struct
+	return &LoginResult{
+		User:  user,
+		Token: token,
+	}, nil
 }

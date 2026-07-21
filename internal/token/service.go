@@ -55,7 +55,11 @@ func (s *Service) Validate(tokenStr string) (int64, error) {
 		return 0, errors.New("invalid token")
 	}
 
-	userID, err := strconv.ParseInt(claims.Subject, 10, 64)
+	userID, err := strconv.ParseInt(
+		claims.Subject,
+		10,
+		64,
+	)
 	if err != nil {
 		return 0, err
 	}

@@ -37,9 +37,6 @@ func main() {
 
 	fmt.Println("✅ Database connected")
 
-	//app
-	application := app.New(cfg, db)
-
 	// Repository Injections
 	userRepo := postgres.NewUserRepository(db)
 
@@ -51,6 +48,9 @@ func main() {
 
 	// Service Injections
 	userHandler := handlers.NewUserHandler(userService)
+
+	//app
+	application := app.New(cfg, db, userHandler, tokenService)
 
 	//router
 	router.Register(application, userHandler)

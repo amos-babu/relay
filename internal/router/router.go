@@ -22,12 +22,13 @@ func Register(app *app.App, userHandle *handlers.UserHandler) {
 
 	r.Get("/health", handlers.Health)
 	r.Post("/users/register", userHandle.Register)
+	r.Post("/users/login", userHandle.Login)
 
 	r.With(middleware.Auth(app.Token)).Get("/profile", userHandle.Profile)
 
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(app.Token))
 
-		r.Get("/profile", app.UserHandler.Profile)
+		r.Get("/users/profile", app.UserHandler.Profile)
 	})
 }

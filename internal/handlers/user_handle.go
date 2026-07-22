@@ -170,32 +170,44 @@ func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
 			}); encodeErr != nil {
 			log.Printf("failed to encode response: %v", encodeErr)
 		}
+		return
+	}
 
-		user, err := h.service.Profile(r.Context(), userID)
-		if err != nil {
+	user, err := h.service.Profile(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
 			if encodeErr := response.JSON(
 				w,
-				http.StatusUnauthorized,
+				http.StatusNotFound,
 				response.ErrorResponse{
-					Error: "unauthorized",
+					Error: "user not found",
 				}); encodeErr != nil {
 				log.Printf("failed to encode response: %v", encodeErr)
 			}
+			return
 		}
-
-		resp := UserResponse{
-			ID:    user.ID,
-			Name:  user.Name,
-			Email: user.Email,
-		}
-
 		if encodeErr := response.JSON(
 			w,
-			http.StatusOK,
-			resp,
-		); encodeErr != nil {
+			http.StatusInternalServerError,
+			response.ErrorResponse{
+				Error: "internal server error",
+			}); encodeErr != nil {
 			log.Printf("failed to encode response: %v", encodeErr)
 		}
+		return
+	}
 
+	resp := UserResponse{
+		ID:    user.ID,
+		Name:  user.Name,
+		Email: user.Email,
+	}
+
+	if encodeErr := response.JSON(
+		w,
+		http.StatusOK,
+		resp,
+	); encodeErr != nil {
+		log.Printf("failed to encode response: %v", encodeErr)
 	}
 }

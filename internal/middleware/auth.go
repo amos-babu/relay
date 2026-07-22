@@ -14,6 +14,10 @@ func UserIDFromContext(ctx context.Context) (int64, bool) {
 	return userID, ok
 }
 
+func ContextWithUserID(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
+
 func Auth(tokens *token.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,11 +72,7 @@ func Auth(tokens *token.Service) func(http.Handler) http.Handler {
 			}
 
 			// Put the user ID in a new context
-			ctx := context.WithValue(
-				r.Context(),
-				userIDKey,
-				userID,
-			)
+			ctx := ContextWithUserID(r.Context(), userID)
 
 			r = r.WithContext(ctx)
 

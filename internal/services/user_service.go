@@ -15,6 +15,7 @@ import (
 
 type UserService struct {
 	repo         repositories.UserRepository
+	refreshToken repositories.RefreshTokenRepository
 	tokenService *token.Service
 }
 

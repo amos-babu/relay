@@ -26,12 +26,21 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 var _ repositories.UserRepository = (*UserRepository)(nil)
 
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
-	const query = `INSERT INTO users (
-	name, 
-	email, 
-	password_hash) VALUES (
-	$1, $2, $3) 
-	RETURNING id, created_at, updated_at;`
+	const query = `
+	INSERT INTO users (
+		name, 
+		email, 
+		password_hash
+	) 
+	VALUES (
+		$1, 
+		$2, 
+		$3) 
+	RETURNING 
+		id, 
+		created_at, 
+		updated_at;
+	`
 
 	err := r.db.QueryRowContext(
 		ctx,
@@ -95,15 +104,17 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {
-	const query = `SELECT
-			id,
-			name,
-			email,
-			password_hash,
-			created_at,
-			updated_at
-		FROM users
-		WHERE id = $1;`
+	const query = `
+	SELECT
+		id,
+		name,
+		email,
+		password_hash,
+		created_at,
+		updated_at
+	FROM users
+	WHERE id = $1;
+	`
 
 	user := &models.User{}
 
@@ -130,4 +141,3 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 func (r *UserRepository) Delete(ctx context.Context, id int64) error {
 	return ErrNotImplemented
 }
-

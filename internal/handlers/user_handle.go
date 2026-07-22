@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"relay/internal/domain"
+	"relay/internal/middleware"
 	"relay/internal/response"
 	"relay/internal/services"
 )
@@ -159,5 +160,42 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		if encodeErr := response.JSON(
+			w,
+			http.StatusUnauthorized,
+			response.ErrorResponse{
+				Error: "unauthorized",
+			}); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
 
+		user, err := h.service.Profile(r.Context(), userID)
+		if err != nil {
+			if encodeErr := response.JSON(
+				w,
+				http.StatusUnauthorized,
+				response.ErrorResponse{
+					Error: "unauthorized",
+				}); encodeErr != nil {
+				log.Printf("failed to encode response: %v", encodeErr)
+			}
+		}
+
+		resp := UserResponse{
+			ID:    user.ID,
+			Name:  user.Name,
+			Email: user.Email,
+		}
+
+		if encodeErr := response.JSON(
+			w,
+			http.StatusOK,
+			resp,
+		); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
+
+	}
 }

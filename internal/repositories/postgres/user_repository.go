@@ -58,35 +58,6 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {
-	const query = `SELECT
-			id,
-			name,
-			email,
-			password_hash,
-			created_at,
-			updated_at
-		FROM users
-		WHERE id = $1;`
-
-	user := &models.User{}
-
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&user.ID,
-		&user.Name,
-		&user.Email,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	const query = `
 	SELECT
@@ -123,6 +94,35 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.
 	return user, nil
 }
 
+func (r *UserRepository) GetByID(ctx context.Context, id int64) (*models.User, error) {
+	const query = `SELECT
+			id,
+			name,
+			email,
+			password_hash,
+			created_at,
+			updated_at
+		FROM users
+		WHERE id = $1;`
+
+	user := &models.User{}
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.PasswordHash,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
 func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return ErrNotImplemented
 }
@@ -130,3 +130,4 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 func (r *UserRepository) Delete(ctx context.Context, id int64) error {
 	return ErrNotImplemented
 }
+

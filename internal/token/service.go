@@ -1,6 +1,8 @@
 package token
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -19,7 +21,7 @@ func NewService(secret string) *Service {
 	}
 }
 
-func (s *Service) Generate(userID int64) (string, error) {
+func (s *Service) GenerateAccessToken(userID int64) (string, error) {
 	claims := jwt.RegisteredClaims{
 		Subject: strconv.FormatInt(userID, 10),
 		ExpiresAt: jwt.NewNumericDate(
@@ -31,6 +33,12 @@ func (s *Service) Generate(userID int64) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	return token.SignedString(s.secret)
+}
+
+func (s *Service) GenerateRefreshToken() (string, error) {
+	b := make([]byte, 32)
+	rand.Read(b)
+	base64.RawURLEncoding.EncodeToString(b)
 }
 
 func (s *Service) Validate(tokenStr string) (int64, error) {

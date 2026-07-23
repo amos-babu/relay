@@ -85,7 +85,7 @@ func (s *UserService) Login(ctx context.Context, email string, password string) 
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	token, err := s.tokenService.Generate(user.ID)
+	token, err := s.tokenService.GenerateAccessToken(user.ID)
 	if err != nil {
 		return nil, err
 	}

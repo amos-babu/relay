@@ -50,8 +50,6 @@ type LoginResponse struct {
 	User        UserResponse `json:"user"`
 }
 
-const refreshTokenTTL = 30 * 24 * time.Hour
-
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
@@ -150,8 +148,8 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		Secure:   false, //Change to true when in production
 		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(refreshTokenTTL),
-		MaxAge:   int(refreshTokenTTL.Seconds()),
+		Expires:  time.Now().Add(services.RefreshTokenTTL),
+		MaxAge:   int(services.RefreshTokenTTL.Seconds()),
 	})
 
 	resp := LoginResponse{

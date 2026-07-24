@@ -28,9 +28,12 @@ type LoginResult struct {
 	RefreshToken string
 }
 
-type RefreshResult struct{}
+type RefreshResult struct {
+	AccessToken  string
+	RefreshToken string
+}
 
-const refreshTokenTTL = 30 * 24 * time.Hour
+const RefreshTokenTTL = 30 * 24 * time.Hour
 
 func NewUserService(
 	users repositories.UserRepository,
@@ -98,33 +101,9 @@ func (s *UserService) Login(ctx context.Context, email string, password string) 
 		return nil, domain.ErrInvalidCredentials
 	}
 
-	//Generate access token from the TokenService
-	accessToken, err := s.tokenService.GenerateAccessToken(user.ID)
+	//Call helper function for accessToken and refreshToken
+	accessToken, refreshToken, err := s.issueTokens(ctx, user.ID)
 	if err != nil {
-		return nil, err
-	}
-
-	//Generate refresh token from the TokenService
-	refreshToken, err := s.tokenService.GenerateRefreshToken()
-	if err != nil {
-		return nil, err
-	}
-
-	//Hash the refresh token using SHA-256
-	sum := sha256.Sum256([]byte(refreshToken))
-
-	//Convert to string
-	hash := hex.EncodeToString(sum[:])
-
-	//Build the model
-	refresh := &models.RefreshToken{
-		UserID:    user.ID,
-		TokenHash: hash,
-		ExpiresAt: time.Now().Add(refreshTokenTTL),
-	}
-
-	//Save the model
-	if err := s.refreshToken.Create(ctx, refresh); err != nil {
 		return nil, err
 	}
 
@@ -145,7 +124,7 @@ func (s *UserService) Refresh(ctx context.Context, refreshToken string) (*Refres
 	hash := hex.EncodeToString(sum[:])
 
 	//call the repository to look it up
-	storedToken, err := s.refreshToken.GetByHash(ctx, hash)
+	refresh, err := s.refreshToken.GetByHash(ctx, hash)
 	if err != nil {
 		if errors.Is(err, domain.ErrRefreshTokenNotFound) {
 			return nil, domain.ErrInvalidRefreshToken
@@ -154,14 +133,73 @@ func (s *UserService) Refresh(ctx context.Context, refreshToken string) (*Refres
 	}
 
 	//check if revoked
-	if storedToken.RevokedAt != nil {
+	if refresh.RevokedAt != nil {
 		return nil, domain.ErrInvalidRefreshToken
 	}
 
 	//check for expiration
-	if time.Now().After(storedToken.ExpiresAt) {
+	if time.Now().After(refresh.ExpiresAt) {
 		return nil, domain.ErrInvalidRefreshToken
 	}
 
-	return nil, nil
+	// Load the user
+	user, err := s.users.GetByID(ctx, refresh.UserID)
+	if err != nil {
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return nil, domain.ErrInvalidRefreshToken
+		}
+		return nil, err
+	}
+
+	// Issue a new pair of tokens
+	accessToken, newRefreshToken, err := s.issueTokens(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Revoke the old refresh token
+	if err := s.refreshToken.Revoke(ctx, refresh.ID); err != nil {
+		return nil, err
+	}
+
+	// Return the result
+	return &RefreshResult{
+		AccessToken:  accessToken,
+		RefreshToken: newRefreshToken,
+	}, nil
+}
+
+func (s *UserService) issueTokens(ctx context.Context, userID int64) (accessToken string, refreshToken string, err error) {
+
+	//Generate access token from the TokenService
+	accessToken, err = s.tokenService.GenerateAccessToken(userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	//Generate refresh token from the TokenService
+	refreshToken, err = s.tokenService.GenerateRefreshToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	//Hash the refresh token using SHA-256
+	sum := sha256.Sum256([]byte(refreshToken))
+
+	//Convert to string
+	hash := hex.EncodeToString(sum[:])
+
+	//Build the model
+	refresh := &models.RefreshToken{
+		UserID:    userID,
+		TokenHash: hash,
+		ExpiresAt: time.Now().Add(RefreshTokenTTL),
+	}
+
+	//Save the model
+	if err := s.refreshToken.Create(ctx, refresh); err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
 }

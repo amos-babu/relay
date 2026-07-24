@@ -28,6 +28,8 @@ type LoginResult struct {
 	RefreshToken string
 }
 
+type RefreshResult struct{}
+
 const refreshTokenTTL = 30 * 24 * time.Hour
 
 func NewUserService(
@@ -136,4 +138,30 @@ func (s *UserService) Login(ctx context.Context, email string, password string) 
 
 func (s *UserService) Profile(ctx context.Context, userID int64) (*models.User, error) {
 	return s.users.GetByID(ctx, userID)
+}
+
+func (s *UserService) Refresh(ctx context.Context, refreshToken string) (*RefreshResult, error) {
+	sum := sha256.Sum256([]byte(refreshToken))
+	hash := hex.EncodeToString(sum[:])
+
+	//call the repository to look it up
+	storedToken, err := s.refreshToken.GetByHash(ctx, hash)
+	if err != nil {
+		if errors.Is(err, domain.ErrRefreshTokenNotFound) {
+			return nil, domain.ErrInvalidRefreshToken
+		}
+		return nil, err
+	}
+
+	//check if revoked
+	if storedToken.RevokedAt != nil {
+		return nil, domain.ErrInvalidRefreshToken
+	}
+
+	//check for expiration
+	if time.Now().After(storedToken.ExpiresAt) {
+		return nil, domain.ErrInvalidRefreshToken
+	}
+
+	return nil, nil
 }

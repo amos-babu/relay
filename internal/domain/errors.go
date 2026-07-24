@@ -8,6 +8,8 @@ var (
 	ErrInvalidCredentials   = errors.New("invalid credentials")
 	ErrRefreshTokenNotFound = errors.New("refresh token not found")
 	ErrUnauthorized         = errors.New("unauthorized")
-	ErrRoomNotFound         = errors.New("room not found")
-	ErrRoomFull             = errors.New("room is full")
+	ErrInvalidRefreshToken  = errors.New("invalid refresh token")
+
+	ErrRoomNotFound = errors.New("room not found")
+	ErrRoomFull     = errors.New("room is full")
 )

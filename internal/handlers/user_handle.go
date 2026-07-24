@@ -9,6 +9,7 @@ import (
 	"relay/internal/middleware"
 	"relay/internal/response"
 	"relay/internal/services"
+	"time"
 )
 
 type UserHandler struct {
@@ -45,9 +46,11 @@ type UserResponse struct {
 }
 
 type LoginResponse struct {
-	Token string       `json:"token"`
-	User  UserResponse `json:"user"`
+	AccessToken string       `json:"accessToken"`
+	User        UserResponse `json:"user"`
 }
+
+const refreshTokenTTL = 30 * 24 * time.Hour
 
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -140,8 +143,19 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__Host-refresh_token",
+		Value:    result.RefreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, //Change to true when in production
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(refreshTokenTTL),
+		MaxAge:   int(refreshTokenTTL.Seconds()),
+	})
+
 	resp := LoginResponse{
-		Token: result.Token,
+		AccessToken: result.AccessToken,
 		User: UserResponse{
 			ID:    result.User.ID,
 			Name:  result.User.Name,

@@ -55,7 +55,7 @@ func Auth(tokens *token.Service) func(http.Handler) http.Handler {
 			tokenString := strings.TrimPrefix(authHeader, bearer)
 
 			//Validate
-			userID, err := tokens.Validate(tokenString)
+			userID, err := tokens.ValidateAccessToken(tokenString)
 
 			//If validation fails
 			if err != nil {

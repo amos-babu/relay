@@ -36,12 +36,16 @@ func (s *Service) GenerateAccessToken(userID int64) (string, error) {
 }
 
 func (s *Service) GenerateRefreshToken() (string, error) {
+	//Generate secure 32 random bytes and then encode it.
 	b := make([]byte, 32)
-	rand.Read(b)
-	base64.RawURLEncoding.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func (s *Service) Validate(tokenStr string) (int64, error) {
+func (s *Service) ValidateAccessToken(tokenStr string) (int64, error) {
 	claims := &jwt.RegisteredClaims{}
 
 	token, err := jwt.ParseWithClaims(

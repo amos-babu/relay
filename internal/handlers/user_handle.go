@@ -54,7 +54,7 @@ type RefreshResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-const refreshCookieName = "__Host-refresh_token"
+const refreshCookieName = "refresh_token" //__Host-refresh_token
 
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -222,6 +222,7 @@ func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Cookie header: %q", r.Header.Get("Cookie"))
 	cookie, err := r.Cookie(refreshCookieName)
 	if err != nil {
 		if encodeErr := response.JSON(

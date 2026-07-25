@@ -37,14 +37,17 @@ func main() {
 
 	fmt.Println("✅ Database connected")
 
-	// Repository Injections
+	// User Repository Injections
 	userRepo := postgres.NewUserRepository(db)
+
+	//RefreshToken Repository
+	refreshToken := postgres.NewRefreshTokenRepository(db)
 
 	// JWT token Service Injections
 	tokenService := token.NewService(cfg.JWT.Secret)
 
 	// Service Injections
-	userService := services.NewUserService(userRepo, tokenService)
+	userService := services.NewUserService(userRepo, tokenService, refreshToken)
 
 	// Service Injections
 	userHandler := handlers.NewUserHandler(userService)

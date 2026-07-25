@@ -38,11 +38,11 @@ const RefreshTokenTTL = 30 * 24 * time.Hour
 func NewUserService(
 	users repositories.UserRepository,
 	tokenService *token.Service,
-	refreshToken *repositories.RefreshTokenRepository,
+	refreshToken repositories.RefreshTokenRepository,
 ) *UserService {
 	return &UserService{
 		users:        users,
-		refreshToken: *refreshToken,
+		refreshToken: refreshToken,
 		tokenService: tokenService,
 	}
 }

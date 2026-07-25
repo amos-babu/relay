@@ -50,6 +50,10 @@ type LoginResponse struct {
 	User        UserResponse `json:"user"`
 }
 
+type RefreshResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
@@ -141,16 +145,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-refresh_token",
-		Value:    result.RefreshToken,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   false, //Change to true when in production
-		SameSite: http.SameSiteLaxMode,
-		Expires:  time.Now().Add(services.RefreshTokenTTL),
-		MaxAge:   int(services.RefreshTokenTTL.Seconds()),
-	})
+	h.setRefreshCookie(w, result.RefreshToken)
 
 	resp := LoginResponse{
 		AccessToken: result.AccessToken,
@@ -222,4 +217,90 @@ func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
 	); encodeErr != nil {
 		log.Printf("failed to encode response: %v", encodeErr)
 	}
+}
+
+func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("__Host-refresh_token")
+	if err != nil {
+		if encodeErr := response.JSON(
+			w,
+			http.StatusUnauthorized,
+			response.ErrorResponse{
+				Error: "unauthorized",
+			},
+		); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
+		return
+	}
+
+	result, err := h.service.Refresh(
+		r.Context(),
+		cookie.Value,
+	)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidRefreshToken) {
+			h.clearRefreshCookie(w)
+			if encodeErr := response.JSON(
+				w,
+				http.StatusUnauthorized,
+				response.ErrorResponse{
+					Error: "invalid refresh token",
+				},
+			); encodeErr != nil {
+				log.Printf("failed to encode response: %v", encodeErr)
+			}
+			return
+		}
+		if encodeErr := response.JSON(
+			w,
+			http.StatusInternalServerError,
+			response.ErrorResponse{
+				Error: "internal server error",
+			},
+		); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
+
+		return
+
+	}
+
+	h.setRefreshCookie(w, result.RefreshToken)
+
+	if encodeErr := response.JSON(
+		w,
+		http.StatusOK,
+		RefreshResponse{
+			AccessToken: result.AccessToken,
+		},
+	); encodeErr != nil {
+		log.Printf("failed to encode response: %v", encodeErr)
+	}
+
+}
+
+// Helper function to set Cookie
+func (h *UserHandler) setRefreshCookie(w http.ResponseWriter, refreshToken string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__Host-refresh_token",
+		Value:    refreshToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, //Change to true when in production
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(services.RefreshTokenTTL),
+		MaxAge:   int(services.RefreshTokenTTL.Seconds()),
+	})
+}
+
+// Helper function to clear Cookie
+func (h *UserHandler) clearRefreshCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__Host-refresh_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
 }

@@ -54,6 +54,8 @@ type RefreshResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
+const refreshCookieName = "__Host-refresh_token"
+
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
@@ -220,7 +222,7 @@ func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("__Host-refresh_token")
+	cookie, err := r.Cookie(refreshCookieName)
 	if err != nil {
 		if encodeErr := response.JSON(
 			w,
@@ -280,10 +282,40 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(refreshCookieName)
+	if err != nil {
+		h.clearRefreshCookie(w)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	err = h.service.Logout(
+		r.Context(),
+		cookie.Value,
+	)
+
+	if err != nil {
+		if encodeErr := response.JSON(
+			w,
+			http.StatusUnauthorized,
+			response.ErrorResponse{
+				Error: "invalid refresh token",
+			},
+		); encodeErr != nil {
+			log.Printf("failed to encode response: %v", encodeErr)
+		}
+		return
+	}
+
+	h.clearRefreshCookie(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Helper function to set Cookie
 func (h *UserHandler) setRefreshCookie(w http.ResponseWriter, refreshToken string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-refresh_token",
+		Name:     refreshCookieName,
 		Value:    refreshToken,
 		Path:     "/",
 		HttpOnly: true,
@@ -297,7 +329,7 @@ func (h *UserHandler) setRefreshCookie(w http.ResponseWriter, refreshToken strin
 // Helper function to clear Cookie
 func (h *UserHandler) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "__Host-refresh_token",
+		Name:     refreshCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,

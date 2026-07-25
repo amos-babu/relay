@@ -18,17 +18,20 @@ func Register(app *app.App, userHandle *handlers.UserHandler) {
 	r.Use(middleware.Logging)
 
 	//Panic Recovery Middleware
-	r.Use(middleware.Rocovery)
+	r.Use(middleware.Recovery)
 
+	//Public routes
 	r.Get("/health", handlers.Health)
+
 	r.Post("/users/register", userHandle.Register)
 	r.Post("/users/login", userHandle.Login)
+	r.Post("/users/refresh", userHandle.Refresh)
+	r.Post("/users/logout", userHandle.Logout)
 
-	r.With(middleware.Auth(app.Token)).Get("/profile", userHandle.Profile)
-
+	//Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Auth(app.Token))
 
-		r.Get("/users/profile", app.UserHandler.Profile)
+		r.Get("/users/profile", userHandle.Profile)
 	})
 }

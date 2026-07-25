@@ -10,7 +10,7 @@ type ErroResponse struct {
 	Error string `json:"error"`
 }
 
-func Rocovery(next http.Handler) http.Handler {
+func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {

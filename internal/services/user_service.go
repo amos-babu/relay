@@ -183,11 +183,8 @@ func (s *UserService) issueTokens(ctx context.Context, userID int64) (accessToke
 		return "", "", err
 	}
 
-	//Hash the refresh token using SHA-256
-	sum := sha256.Sum256([]byte(refreshToken))
-
-	//Convert to string
-	hash := hex.EncodeToString(sum[:])
+	//Hash the refresh token using SHA-256 and Convert to string
+	hash := s.hashRefreshToken(refreshToken)
 
 	//Build the model
 	refresh := &models.RefreshToken{
@@ -202,4 +199,33 @@ func (s *UserService) issueTokens(ctx context.Context, userID int64) (accessToke
 	}
 
 	return accessToken, refreshToken, nil
+}
+
+func (s *UserService) Logout(ctx context.Context, refreshToken string) error {
+	hash := s.hashRefreshToken(refreshToken)
+
+	refresh, err := s.refreshToken.GetByHash(ctx, hash)
+
+	if errors.Is(err, domain.ErrRefreshTokenNotFound) {
+		return nil
+	}
+	if err != nil {
+		if errors.Is(err, domain.ErrRefreshTokenNotFound) {
+			return nil
+		}
+
+		return err
+	}
+
+	if refresh.RevokedAt != nil {
+		return nil
+	}
+
+	return s.refreshToken.Revoke(ctx, refresh.ID)
+}
+
+// Helper function to hashing
+func (s *UserService) hashRefreshToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }

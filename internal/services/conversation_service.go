@@ -44,3 +44,11 @@ func (s *ConversationService) Create(
 	return s.conversations.Create(ctx, creatorID, recipientID)
 
 }
+
+func (s *ConversationService) ListForUser(
+	ctx context.Context,
+	userID int64,
+) ([]*models.Conversation, error) {
+
+	return s.conversations.ListForUser(ctx, userID)
+}

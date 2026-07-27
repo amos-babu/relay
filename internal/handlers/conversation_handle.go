@@ -35,7 +35,7 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 	// Get authenticated user
 	creatorID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
-		response.Error(w, http.StatusUnauthorized, "unathourized")
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -61,6 +61,7 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrUserNotFound):
 			response.Error(w, http.StatusNotFound, "recipient not found")
 		default:
+			log.Printf("create conversation: %v", err)
 			response.Error(w, http.StatusInternalServerError, "internal server error")
 		}
 		return
@@ -79,4 +80,13 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to log response: %v", err)
 	}
 
+}
+
+func (h *ConversationHandle) ListForUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFromContext(r.Context())
+
+	conversations, err := h.service.ListForUser(
+		r.Context(),
+		userID,
+	)
 }

@@ -85,9 +85,45 @@ func (r *ConversationRepository) Create(ctx context.Context, creatorID, recipien
 
 	return conversation, nil
 }
-func (r *ConversationRepository) GetByID(ctx context.Context, id int64) (*models.Conversation, error) {
-	return nil, nil
-}
 func (r *ConversationRepository) ListForUser(ctx context.Context, userID int64) ([]*models.Conversation, error) {
+	const query = `
+	SELECT
+		c.id,
+		c.created_at
+	FROM conversations c
+	INNER JOIN conversation_participants cp
+		ON cp.conversation_id = c.id
+	WHERE cp.user_id = $1
+	ORDER BY c.created_at DESC;
+	`
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var conversations []*models.Conversation
+
+	for rows.Next() {
+		conversation := &models.Conversation{}
+
+		if err := rows.Scan(
+			&conversation.ID,
+			&conversation.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		conversations = append(conversations, conversation)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return conversations, nil
+}
+func (r *ConversationRepository) GetByID(ctx context.Context, id int64) (*models.Conversation, error) {
 	return nil, nil
 }

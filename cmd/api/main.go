@@ -39,6 +39,7 @@ func main() {
 
 	// User Repository Injections
 	userRepo := postgres.NewUserRepository(db)
+	conversationRepo := postgres.NewConversationRepository(db)
 
 	//RefreshToken Repository
 	refreshToken := postgres.NewRefreshTokenRepository(db)
@@ -48,15 +49,21 @@ func main() {
 
 	// Service Injections
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)
+	conversationService := services.NewConversationService(conversationRepo, userRepo)
 
-	// Service Injections
+	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)
+	conversationHandler := handlers.NewConversationHandle(conversationService)
 
 	//app
 	application := app.New(cfg, db, userHandler, tokenService)
 
 	//router
-	router.Register(application, userHandler)
+	router.Register(
+		application,
+		userHandler,
+		conversationHandler,
+	)
 
 	log.Printf("Starting server on :%s", cfg.App.Port)
 

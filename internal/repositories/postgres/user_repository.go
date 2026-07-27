@@ -128,6 +128,9 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*models.User, e
 	)
 
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
 		return nil, err
 	}
 

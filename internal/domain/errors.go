@@ -3,13 +3,12 @@ package domain
 import "errors"
 
 var (
-	ErrEmailAlreadyExists   = errors.New("email already exists")
-	ErrUserNotFound         = errors.New("user not found")
-	ErrInvalidCredentials   = errors.New("invalid credentials")
-	ErrRefreshTokenNotFound = errors.New("refresh token not found")
-	ErrUnauthorized         = errors.New("unauthorized")
-	ErrInvalidRefreshToken  = errors.New("invalid refresh token")
-
-	ErrRoomNotFound = errors.New("room not found")
-	ErrRoomFull     = errors.New("room is full")
+	ErrEmailAlreadyExists    = errors.New("email already exists")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrRefreshTokenNotFound  = errors.New("refresh token not found")
+	ErrUnauthorized          = errors.New("unauthorized")
+	ErrInvalidRefreshToken   = errors.New("invalid refresh token")
+	ErrConversationNotFound  = errors.New("conversation not found")
+	ErrCannotMessageYourself = errors.New("cannot create conversation with yourself")
 )

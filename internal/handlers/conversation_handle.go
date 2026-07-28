@@ -77,16 +77,41 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 		http.StatusCreated,
 		resp,
 	); err != nil {
-		log.Printf("failed to log response: %v", err)
+		log.Printf("failed to encode response: %v", err)
 	}
 
 }
 
 func (h *ConversationHandle) ListForUser(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	conversations, err := h.service.ListForUser(
 		r.Context(),
 		userID,
 	)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "failed to fetch conversations")
+		return
+	}
+
+	resp := make([]ConversationResponse, len(conversations))
+	for i, c := range conversations {
+		resp[i] = ConversationResponse{
+			ID:        c.ID,
+			CreatedAt: c.CreatedAt,
+		}
+	}
+
+	if err := response.JSON(
+		w,
+		http.StatusOK,
+		resp,
+	); err != nil {
+		log.Printf("failed to encode response: %v", err)
+	}
+
 }

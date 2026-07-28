@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
 )
@@ -123,6 +125,38 @@ func (r *ConversationRepository) ListForUser(ctx context.Context, userID int64) 
 	}
 
 	return conversations, nil
+}
+func (r *ConversationRepository) FindDirectConversation(ctx context.Context, user1ID, user2ID int64) (*models.Conversation, error) {
+	const query = `
+	SELECT
+		c.id,
+		c.created_at
+	FROM conversations c
+	JOIN conversation_participants cp
+		ON cp.conversation_id = c.id
+	WHERE cp.user_id IN ($1, $2)
+	GROUP BY c.id, c.created_at
+	HAVING COUNT(DISTINCT cp.user_id) = 2;
+	`
+
+	conversation := &models.Conversation{}
+
+	if err := r.db.QueryRowContext(
+		ctx,
+		query,
+		user1ID,
+		user2ID,
+	).Scan(
+		&conversation.ID,
+		&conversation.CreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrConversationNotFound
+		}
+		return nil, err
+	}
+
+	return conversation, nil
 }
 func (r *ConversationRepository) GetByID(ctx context.Context, id int64) (*models.Conversation, error) {
 	return nil, nil

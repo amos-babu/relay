@@ -40,6 +40,15 @@ func (s *ConversationService) Create(
 		return nil, err
 	}
 
+	conversation, err := s.conversations.FindDirectConversation(ctx, creatorID, recipientID)
+
+	if err == nil {
+		return conversation, nil
+	}
+
+	if !errors.Is(err, domain.ErrConversationNotFound) {
+		return nil, err
+	}
 	// Delegate persistence to the repository.
 	return s.conversations.Create(ctx, creatorID, recipientID)
 

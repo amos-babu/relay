@@ -60,7 +60,7 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid request body")
+		response.BadRequest(w, "invalid request body")
 
 		return
 	}
@@ -74,10 +74,10 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, domain.ErrEmailAlreadyExists) {
-			response.Error(w, http.StatusConflict, "email already exists")
+			response.Conflict(w, "email already exists")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "internal server error")
+		response.InternalServerError(w)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid request body")
+		response.BadRequest(w, "invalid request body")
 		return
 	}
 
@@ -113,10 +113,10 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidCredentials) {
-			response.Error(w, http.StatusUnauthorized, "invalid email or password")
+			response.Unauthorized(w, "invalid email or password")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "internal server error")
+		response.InternalServerError(w)
 		return
 	}
 
@@ -144,18 +144,18 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
-		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		response.Unauthorized(w, "unauthorized")
 		return
 	}
 
 	user, err := h.service.Profile(r.Context(), userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
-			response.Error(w, http.StatusNotFound, "user not found")
+			response.NotFound(w, "user not found")
 			return
 		}
 
-		response.Error(w, http.StatusInternalServerError, "internal server error")
+		response.InternalServerError(w)
 		return
 	}
 
@@ -178,7 +178,7 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Cookie header: %q", r.Header.Get("Cookie"))
 	cookie, err := r.Cookie(refreshCookieName)
 	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		response.Unauthorized(w, "unauthorized")
 		return
 	}
 
@@ -189,10 +189,10 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidRefreshToken) {
 			h.clearRefreshCookie(w)
-			response.Error(w, http.StatusUnauthorized, "invalid refresh token")
+			response.Unauthorized(w, "invalid refresh token")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "internal server error")
+		response.InternalServerError(w)
 
 		return
 
@@ -226,7 +226,7 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		response.Error(w, http.StatusUnauthorized, "invalid refresh token")
+		response.Unauthorized(w, "invalid refresh token")
 		return
 	}
 

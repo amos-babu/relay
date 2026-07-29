@@ -34,18 +34,26 @@ func Error(w http.ResponseWriter, status int, message string) {
 	}
 }
 
-// func BadRequest(w http.ResponseWriter, message string) {
-// 	Error(w, http.StatusBadRequest, message)
-// }
+func BadRequest(w http.ResponseWriter, message string) {
+	Error(w, http.StatusBadRequest, message)
+}
 
-// func Unauthorized(w http.ResponseWriter, message string) {
-// 	Error(w, http.StatusUnauthorized, message)
-// }
+func Unauthorized(w http.ResponseWriter, message string) {
+	Error(w, http.StatusUnauthorized, message)
+}
 
-// func NotFound(w http.ResponseWriter, message string) {
-// 	Error(w, http.StatusNotFound, message)
-// }
+func NotFound(w http.ResponseWriter, message string) {
+	Error(w, http.StatusNotFound, message)
+}
 
-// func InternalServerError(w http.ResponseWriter) {
-// 	Error(w, http.StatusInternalServerError, "internal server error")
-// }
+func Forbidden(w http.ResponseWriter, message string) {
+	Error(w, http.StatusForbidden, message)
+}
+
+func Conflict(w http.ResponseWriter, message string) {
+	Error(w, http.StatusConflict, message)
+}
+
+func InternalServerError(w http.ResponseWriter) {
+	Error(w, http.StatusInternalServerError, "internal server error")
+}

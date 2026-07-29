@@ -35,7 +35,7 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 	// Get authenticated user
 	creatorID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
-		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		response.Unauthorized(w, "unauthorized")
 		return
 	}
 
@@ -43,7 +43,7 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateConversationRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, http.StatusBadRequest, "invalid request body")
+		response.BadRequest(w, "invalid request body")
 		return
 	}
 
@@ -57,12 +57,11 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrCannotMessageYourself):
-			response.Error(w, http.StatusBadRequest, err.Error())
+			response.BadRequest(w, "cannot message yourself")
 		case errors.Is(err, domain.ErrUserNotFound):
-			response.Error(w, http.StatusNotFound, "recipient not found")
+			response.NotFound(w, "recipient not found")
 		default:
-			log.Printf("create conversation: %v", err)
-			response.Error(w, http.StatusInternalServerError, "internal server error")
+			response.InternalServerError(w)
 		}
 		return
 	}
@@ -85,7 +84,7 @@ func (h *ConversationHandle) Create(w http.ResponseWriter, r *http.Request) {
 func (h *ConversationHandle) ListForUser(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
-		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		response.Unauthorized(w, "unauthorized")
 		return
 	}
 
@@ -94,15 +93,15 @@ func (h *ConversationHandle) ListForUser(w http.ResponseWriter, r *http.Request)
 		userID,
 	)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "failed to fetch conversations")
+		response.InternalServerError(w)
 		return
 	}
 
 	resp := make([]ConversationResponse, len(conversations))
-	for i, c := range conversations {
+	for i, conversation := range conversations {
 		resp[i] = ConversationResponse{
-			ID:        c.ID,
-			CreatedAt: c.CreatedAt,
+			ID:        conversation.ID,
+			CreatedAt: conversation.CreatedAt,
 		}
 	}
 

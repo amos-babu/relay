@@ -34,7 +34,7 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		return nil, err
 	}
 	if !ok {
-		return nil, domain.ErrUnauthorizedParticipant
+		return nil, domain.ErrNotConversationParticipant
 	}
 
 	//Build the model
@@ -50,4 +50,23 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 	}
 
 	return message, nil
+}
+
+func (s *MessageService) ListForConversation(ctx context.Context, conversationID int64, userID int64) ([]*models.Message, error) {
+	//Check if sender is a participant in this conversation
+	ok, err := s.conversations.IsParticipant(ctx, conversationID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrNotConversationParticipant
+	}
+
+	//Fetch the messages
+	messages, err := s.messages.ListForConversation(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+
+	return messages, nil
 }

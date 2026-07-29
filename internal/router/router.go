@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandler *handlers.ConversationHandle) {
+func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandler *handlers.ConversationHandle, messageHandler *handlers.MessageHandle) {
 	r := app.Router
 
 	//Request Id Middleware
@@ -35,6 +35,7 @@ func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandle
 		r.Get("/users/profile", userHandle.Profile)
 		r.Post("/conversations", conversationHandler.Create)
 		r.Get("/conversations", conversationHandler.ListForUser)
-		// r.Get("/conversations/{id}/messages", conversationHandler.ListForUser)
+		r.Post("/conversations/{conversationID}/messages", messageHandler.Send)
+		r.Get("/conversations/{conversationID}/messages", messageHandler.ListForConversation)
 	})
 }

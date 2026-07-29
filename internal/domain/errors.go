@@ -12,4 +12,6 @@ var (
 	ErrConversationNotFound    = errors.New("conversation not found")
 	ErrCannotMessageYourself   = errors.New("cannot create conversation with yourself")
 	ErrUnauthorizedParticipant = errors.New("user is not a participant in this conversation")
+	ErrEmptyMessage            = errors.New("empty message")
+	
 )

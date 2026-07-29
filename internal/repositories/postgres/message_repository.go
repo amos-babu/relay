@@ -49,5 +49,45 @@ func (r *MessageRepository) Create(ctx context.Context, message *models.Message)
 }
 
 func (r *MessageRepository) ListForConversation(ctx context.Context, conversationID int64) ([]*models.Message, error) {
-	return nil, nil
+	const query = `
+	SELECT
+		id,
+		conversation_id,
+		sender_id,
+		content,
+		created_at
+	FROM messages
+	WHERE conversation_id = $1
+	ORDER BY created_at ASC, id ASC;
+	`
+	rows, err := r.db.QueryContext(ctx, query, conversationID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var messages []*models.Message
+
+	for rows.Next() {
+		message := &models.Message{}
+
+		if err := rows.Scan(
+			&message.ID,
+			&message.ConversationID,
+			&message.SenderID,
+			&message.Content,
+			&message.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		messages = append(messages, message)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return messages, nil
 }

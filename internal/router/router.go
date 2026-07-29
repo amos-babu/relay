@@ -35,5 +35,6 @@ func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandle
 		r.Get("/users/profile", userHandle.Profile)
 		r.Post("/conversations", conversationHandler.Create)
 		r.Get("/conversations", conversationHandler.ListForUser)
+		// r.Get("/conversations/{id}/messages", conversationHandler.ListForUser)
 	})
 }

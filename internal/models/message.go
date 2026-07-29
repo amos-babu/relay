@@ -6,6 +6,6 @@ type Message struct {
 	ID             int64
 	ConversationID int64
 	SenderID       int64
-	Text           string
+	Content        string
 	CreatedAt      time.Time
 }

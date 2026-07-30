@@ -4,11 +4,12 @@ import (
 	"relay/internal/app"
 	"relay/internal/handlers"
 	"relay/internal/middleware"
+	"relay/internal/websocket"
 
 	"github.com/go-chi/chi/v5"
 )
 
-func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandler *handlers.ConversationHandle, messageHandler *handlers.MessageHandle) {
+func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandler *handlers.ConversationHandle, messageHandler *handlers.MessageHandle, websocketHandler *websocket.Handler) {
 	r := app.Router
 
 	//Request Id Middleware
@@ -37,5 +38,7 @@ func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandle
 		r.Get("/conversations", conversationHandler.ListForUser)
 		r.Post("/conversations/{conversationID}/messages", messageHandler.Send)
 		r.Get("/conversations/{conversationID}/messages", messageHandler.ListForConversation)
+
+		r.Get("/ws", websocketHandler.ServeHTTP)
 	})
 }

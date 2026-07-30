@@ -13,6 +13,7 @@ import (
 	"relay/internal/router"
 	"relay/internal/services"
 	"relay/internal/token"
+	"relay/internal/websocket"
 )
 
 func main() {
@@ -53,10 +54,14 @@ func main() {
 	conversationService := services.NewConversationService(conversationRepo, userRepo)
 	messageService := services.NewMessageService(messageRepo, conversationRepo)
 
+	//Hub Injections
+	hub := websocket.NewHub()
+
 	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)
 	conversationHandler := handlers.NewConversationHandle(conversationService)
 	messageHandler := handlers.NewMessageHandle(messageService)
+	websocketHandler := websocket.NewHandler(hub)
 
 	//app
 	application := app.New(cfg, db, userHandler, tokenService)
@@ -67,6 +72,7 @@ func main() {
 		userHandler,
 		conversationHandler,
 		messageHandler,
+		websocketHandler,
 	)
 
 	log.Printf("Starting server on :%s", cfg.App.Port)

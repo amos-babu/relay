@@ -37,6 +37,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//upgrade the connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("websocket upgrade failed: %v", err)
 		return
 	}
 

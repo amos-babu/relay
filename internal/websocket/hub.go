@@ -29,3 +29,20 @@ func (h *Hub) Unregister(client *Client) {
 
 	delete(h.clients, client.UserID)
 }
+
+func (h *Hub) SendToUser(userID int64, message []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	client, ok := h.clients[userID]
+	if !ok {
+		return
+	}
+
+	select {
+	case client.Send <- message:
+
+	default:
+
+	}
+}

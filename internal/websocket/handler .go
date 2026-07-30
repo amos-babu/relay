@@ -45,11 +45,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	client := &Client{
 		UserID: userID,
 		Conn:   conn,
-		Send:   make(chan []byte),
+		Send:   make(chan []byte, 256),
 	}
 
 	//Register
 	h.hub.Register(client)
+
+	go client.writePump()
 
 	//Testing
 	log.Printf("User %d connected", userID)
@@ -57,10 +59,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		//CleanUp
 		h.hub.Unregister(client)
+		close(client.Send)
 		conn.Close()
 
 		//Testing
 		log.Printf("User %d disconnected", userID)
 	}()
+
+	client.readPump()
 
 }

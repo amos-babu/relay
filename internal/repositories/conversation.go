@@ -10,5 +10,6 @@ type ConversationRepository interface {
 	ListForUser(ctx context.Context, userID int64) ([]*models.Conversation, error)
 	FindDirectConversation(ctx context.Context, user1ID, user2ID int64) (*models.Conversation, error)
 	IsParticipant(ctx context.Context, conversationID int64, userID int64) (bool, error)
+	OtherParticipant(ctx context.Context, conversationID int64, senderID int64) (int64, error)
 	// GetByID(ctx context.Context, id int64) (*models.Conversation, error)
 }

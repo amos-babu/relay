@@ -182,6 +182,32 @@ func (r *ConversationRepository) IsParticipant(ctx context.Context, conversation
 	return exists, nil
 }
 
+func (r *ConversationRepository) OtherParticipant(ctx context.Context, conversationID int64, senderID int64) (int64, error) {
+	const query = `
+	SELECT user_id
+	FROM conversation_participants
+	WHERE conversation_id = $1
+	AND user_id <> $2;
+	`
+	var recipientID int64
+
+	if err := r.db.QueryRowContext(
+		ctx,
+		query,
+		conversationID,
+		senderID,
+	).Scan(
+		&recipientID,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, domain.ErrNoParticipant
+		}
+		return 0, err
+	}
+	return recipientID, nil
+
+}
+
 // func (r *ConversationRepository) GetByID(ctx context.Context, id int64) (*models.Conversation, error) {
 // 	return nil, nil
 // }

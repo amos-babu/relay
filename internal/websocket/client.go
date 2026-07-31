@@ -1,8 +1,6 @@
 package websocket
 
 import (
-	"log"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -23,7 +21,6 @@ func (c *Client) readPump() {
 
 func (c *Client) writePump() {
 	for message := range c.Send {
-		log.Printf("Sending to user %d: %s", c.UserID, message)
 		if err := c.Conn.WriteMessage(
 			websocket.TextMessage,
 			message,

@@ -8,6 +8,7 @@ import (
 	"relay/internal/repositories"
 	"relay/internal/websocket"
 	"strings"
+	"time"
 )
 
 type MessageService struct {
@@ -22,6 +23,14 @@ func NewMessageService(messages repositories.MessageRepository, conversations re
 		conversations: conversations,
 		hub:           hub,
 	}
+}
+
+type MessageEvent struct {
+	ID             int64     `json:"id"`
+	ConversationID int64     `json:"conversation_id"`
+	SenderID       int64     `json:"sender_id"`
+	Content        string    `json:"content"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 func (s *MessageService) Send(ctx context.Context, conversationID int64, senderID int64, content string) (*models.Message, error) {
@@ -63,7 +72,15 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		return nil, err
 	}
 
-	payload, err := json.Marshal(message)
+	resp := MessageEvent{
+		ID:             message.ID,
+		ConversationID: message.ConversationID,
+		SenderID:       message.SenderID,
+		Content:        message.Content,
+		CreatedAt:      message.CreatedAt,
+	}
+
+	payload, err := json.Marshal(resp)
 	if err != nil {
 		return nil, err
 	}

@@ -182,32 +182,42 @@ func (r *ConversationRepository) IsParticipant(ctx context.Context, conversation
 	return exists, nil
 }
 
-func (r *ConversationRepository) OtherParticipant(ctx context.Context, conversationID int64, senderID int64) (int64, error) {
+func (r *ConversationRepository) Participants(ctx context.Context, conversationID int64) ([]int64, error) {
 	const query = `
 	SELECT user_id
 	FROM conversation_participants
 	WHERE conversation_id = $1
-	AND user_id <> $2;
+	ORDER BY user_id;
 	`
-	var recipientID int64
+	var participants []int64
 
-	if err := r.db.QueryRowContext(
+	rows, err := r.db.QueryContext(
 		ctx,
 		query,
 		conversationID,
-		senderID,
-	).Scan(
-		&recipientID,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, domain.ErrNoParticipant
-		}
-		return 0, err
+	)
+	if err != nil {
+		return nil, err
 	}
-	return recipientID, nil
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var userID int64
+		if err := rows.Scan(
+			&userID,
+		); err != nil {
+			return nil, err
+		}
+
+		participants = append(participants, userID)
+
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return participants, nil
 
 }
-
-// func (r *ConversationRepository) GetByID(ctx context.Context, id int64) (*models.Conversation, error) {
-// 	return nil, nil
-// }

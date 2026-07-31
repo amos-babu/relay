@@ -63,10 +63,9 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 	}
 
 	//Check the other Participant in the conversation
-	recipientID, err := s.conversations.OtherParticipant(
+	participants, err := s.conversations.Participants(
 		ctx,
 		message.ConversationID,
-		message.SenderID,
 	)
 	if err != nil {
 		return nil, err
@@ -84,7 +83,9 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 	if err != nil {
 		return nil, err
 	}
-	s.hub.SendToUser(recipientID, payload)
+	for _, userID := range participants {
+		s.hub.SendToUser(userID, payload)
+	}
 
 	return message, nil
 }

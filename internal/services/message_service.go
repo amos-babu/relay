@@ -2,21 +2,25 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
+	"relay/internal/websocket"
 	"strings"
 )
 
 type MessageService struct {
 	messages      repositories.MessageRepository
 	conversations repositories.ConversationRepository
+	hub           *websocket.Hub
 }
 
-func NewMessageService(messages repositories.MessageRepository, conversations repositories.ConversationRepository) *MessageService {
+func NewMessageService(messages repositories.MessageRepository, conversations repositories.ConversationRepository, hub *websocket.Hub) *MessageService {
 	return &MessageService{
 		messages:      messages,
 		conversations: conversations,
+		hub:           hub,
 	}
 }
 
@@ -48,6 +52,22 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 	if err := s.messages.Create(ctx, message); err != nil {
 		return nil, err
 	}
+
+	//Check the other Participant in the conversation
+	recipientID, err := s.conversations.OtherParticipant(
+		ctx,
+		message.ConversationID,
+		message.SenderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := json.Marshal(message)
+	if err != nil {
+		return nil, err
+	}
+	s.hub.SendToUser(recipientID, payload)
 
 	return message, nil
 }

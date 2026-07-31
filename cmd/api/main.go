@@ -49,13 +49,13 @@ func main() {
 	// JWT token Service Injections
 	tokenService := token.NewService(cfg.JWT.Secret)
 
+	//Hub Injections
+	hub := websocket.NewHub()
+
 	// Service Injections
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)
 	conversationService := services.NewConversationService(conversationRepo, userRepo)
-	messageService := services.NewMessageService(messageRepo, conversationRepo)
-
-	//Hub Injections
-	hub := websocket.NewHub()
+	messageService := services.NewMessageService(messageRepo, conversationRepo, hub)
 
 	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)

@@ -1,6 +1,10 @@
 package websocket
 
-import "github.com/gorilla/websocket"
+import (
+	"log"
+
+	"github.com/gorilla/websocket"
+)
 
 type Client struct {
 	UserID int64
@@ -19,6 +23,7 @@ func (c *Client) readPump() {
 
 func (c *Client) writePump() {
 	for message := range c.Send {
+		log.Printf("Sending to user %d: %s", c.UserID, message)
 		if err := c.Conn.WriteMessage(
 			websocket.TextMessage,
 			message,

@@ -53,17 +53,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 
-	//Testing
-	log.Printf("User %d connected", userID)
-
 	defer func() {
 		//CleanUp
 		h.hub.Unregister(client)
 		close(client.Send)
 		conn.Close()
 
-		//Testing
-		log.Printf("User %d disconnected", userID)
 	}()
 
 	client.readPump()

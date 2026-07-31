@@ -71,6 +71,7 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		return nil, err
 	}
 
+	//Build the messageEvent response
 	resp := MessageEvent{
 		ID:             message.ID,
 		ConversationID: message.ConversationID,
@@ -79,10 +80,19 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		CreatedAt:      message.CreatedAt,
 	}
 
-	payload, err := json.Marshal(resp)
+	//Build the event
+	event := websocket.Event{
+		Type:    websocket.EventMessage,
+		Payload: resp,
+	}
+
+	//Marshall the event
+	payload, err := json.Marshal(event)
 	if err != nil {
 		return nil, err
 	}
+
+	//Send Each message event to the websocket hub
 	for _, userID := range participants {
 		s.hub.SendToUser(userID, payload)
 	}

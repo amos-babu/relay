@@ -56,12 +56,13 @@ func main() {
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)
 	conversationService := services.NewConversationService(conversationRepo, userRepo)
 	messageService := services.NewMessageService(messageRepo, conversationRepo, hub)
+	websocketService := services.NewWebsocketService()
 
 	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)
 	conversationHandler := handlers.NewConversationHandle(conversationService)
 	messageHandler := handlers.NewMessageHandle(messageService)
-	websocketHandler := websocket.NewHandler(hub)
+	websocketHandler := websocket.NewHandler(hub, websocketService.HandleEvent)
 
 	//app
 	application := app.New(cfg, db, userHandler, tokenService)

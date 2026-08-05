@@ -10,12 +10,14 @@ import (
 )
 
 type Handler struct {
-	hub *Hub
+	hub     *Hub
+	onEvent func(int64, Event)
 }
 
-func NewHandler(hub *Hub) *Handler {
+func NewHandler(hub *Hub, onEvent func(int64, Event)) *Handler {
 	return &Handler{
-		hub: hub,
+		hub:     hub,
+		onEvent: onEvent,
 	}
 }
 
@@ -46,6 +48,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserID: userID,
 		Conn:   conn,
 		Send:   make(chan []byte, 256),
+
+		OnEvent: h.onEvent,
 	}
 
 	//Register

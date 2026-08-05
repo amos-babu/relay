@@ -1,13 +1,13 @@
 package services
 
 import (
-	"relay/internal/repositories"
 	"relay/internal/websocket"
 )
 
-type WebSocketService struct {
-	conversations repositories.ConversationRepository
-	hub           *websocket.Hub
+type WebSocketService struct{}
+
+func NewWebsocketService() *WebSocketService {
+	return &WebSocketService{}
 }
 
 func (s *WebSocketService) HandleEvent(
@@ -15,7 +15,7 @@ func (s *WebSocketService) HandleEvent(
 	event websocket.Event,
 ) {
 	switch {
-		case websocket.EventTyping:
-		default:
+	case websocket.EventTyping:
+	default:
 	}
 }

@@ -20,15 +20,6 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 )
 
-type TypingRequest struct {
-	ConversationID int64 `json:"conversation_id"`
-}
-
-type TypingEvent struct {
-	ConversationID int64 `json:"conversation_id"`
-	UserID         int64 `json:"user_id"`
-}
-
 func (c *Client) readPump() {
 	c.Conn.SetReadDeadline(
 		time.Now().Add(pongWait),

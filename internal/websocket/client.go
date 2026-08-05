@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,15 +21,6 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 )
 
-type TypingRequest struct {
-	ConversationID int64 `json:"conversation_id"`
-}
-
-type TypingEvent struct {
-	ConversationID int64 `json:"conversation_id"`
-	UserID         int64 `json:"user_id"`
-}
-
 func (c *Client) readPump() {
 	c.Conn.SetReadDeadline(
 		time.Now().Add(pongWait),
@@ -44,15 +36,20 @@ func (c *Client) readPump() {
 		if err != nil {
 			return
 		}
+		// log.Printf("received raw websocket message: %s", data)
+
 		var event Event
 
 		if err := json.Unmarshal(data, &event); err != nil {
+			log.Printf("unmarshal failed: %v", err)
 			continue
 		}
 
-		if c.OnEvent != nil {
-			c.OnEvent(c.UserID, event)
+		if c.OnEvent == nil {
+			return
 		}
+
+		c.OnEvent(c.UserID, event)
 	}
 }
 

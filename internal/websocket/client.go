@@ -55,7 +55,10 @@ func (c *Client) readPump() {
 
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
-	defer ticker.Stop()
+	defer func() {
+		ticker.Stop()
+		c.Conn.Close()
+	}()
 	for {
 		select {
 		case message, ok := <-c.Send:

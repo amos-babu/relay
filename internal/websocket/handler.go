@@ -48,7 +48,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserID: userID,
 		Conn:   conn,
 		Send:   make(chan []byte, 256),
-
 		OnEvent: h.onEvent,
 	}
 

@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -35,15 +36,20 @@ func (c *Client) readPump() {
 		if err != nil {
 			return
 		}
+		// log.Printf("received raw websocket message: %s", data)
+
 		var event Event
 
 		if err := json.Unmarshal(data, &event); err != nil {
+			log.Printf("unmarshal failed: %v", err)
 			continue
 		}
 
-		if c.OnEvent != nil {
-			c.OnEvent(c.UserID, event)
+		if c.OnEvent == nil {
+			return
 		}
+
+		c.OnEvent(c.UserID, event)
 	}
 }
 

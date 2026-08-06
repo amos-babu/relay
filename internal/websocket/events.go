@@ -14,6 +14,11 @@ type TypingEvent struct {
 	UserID         int64 `json:"user_id"`
 }
 
+type PresenceEvent struct {
+	UserID int64 `json:"user_id"`
+	Online bool  `json:"online"`
+}
+
 const (
 	EventMessage     = "message"
 	EventTyping      = "typing"

@@ -9,6 +9,7 @@ import (
 	"relay/internal/middleware"
 	"relay/internal/response"
 	"relay/internal/services"
+	"relay/internal/validation"
 	"time"
 )
 
@@ -73,11 +74,21 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		if errors.Is(err, domain.ErrEmailAlreadyExists) {
+		var vErr *validation.ValidationError
+
+		switch {
+		case errors.Is(err, domain.ErrEmailAlreadyExists):
 			response.Conflict(w, "email already exists")
 			return
+
+		case errors.As(err, &vErr):
+			response.UnprocessableEntity(w, vErr) // 422
+			return
+
+		default:
+			response.InternalServerError(w)
 		}
-		response.InternalServerError(w)
+
 		return
 	}
 
@@ -112,11 +123,21 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		if errors.Is(err, domain.ErrInvalidCredentials) {
+		var vErr *validation.ValidationError
+
+		switch {
+		case errors.Is(err, domain.ErrInvalidCredentials):
 			response.Unauthorized(w, "invalid email or password")
 			return
+
+		case errors.As(err, &vErr):
+			response.UnprocessableEntity(w, vErr) // 422
+			return
+
+		default:
+			response.InternalServerError(w)
 		}
-		response.InternalServerError(w)
+
 		return
 	}
 

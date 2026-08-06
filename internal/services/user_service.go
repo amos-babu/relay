@@ -49,7 +49,7 @@ func NewUserService(
 
 func (s *UserService) Register(ctx context.Context, name string, email string, password string) (*models.User, error) {
 	// validation
-	if err := validation.ValidateRegistraion(name, email, password); err != nil {
+	if err := validation.ValidateRegistration(name, email, password); err != nil {
 		return nil, err
 	}
 

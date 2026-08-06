@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"relay/internal/validation"
 )
 
 type ErrorResponse struct {
@@ -16,8 +17,13 @@ type SuccessResponse struct {
 
 type ValidationErrorResponse struct {
 	Error  string            `json:"error"`
-	Fields map[string]string `json:"fields"`
+	Errors map[string]string `json:"errors"`
 }
+
+// type ValidationResponse struct {
+// 	Error  string            `json:"error"`
+// 	Errors map[string]string `json:"errors"`
+// }
 
 func JSON(w http.ResponseWriter, status int, data any) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -52,6 +58,20 @@ func Forbidden(w http.ResponseWriter, message string) {
 
 func Conflict(w http.ResponseWriter, message string) {
 	Error(w, http.StatusConflict, message)
+}
+
+func UnprocessableEntity(w http.ResponseWriter, vErr *validation.ValidationError) {
+	if err := JSON(
+		w,
+		http.StatusUnprocessableEntity,
+		ValidationErrorResponse{
+			Error:  "validation failed",
+			Errors: vErr.Errors,
+		}, //422
+	); err != nil {
+		log.Printf("failed to encode response: %v", err)
+
+	}
 }
 
 func InternalServerError(w http.ResponseWriter) {

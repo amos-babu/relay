@@ -62,7 +62,12 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 	conversationHandler := handlers.NewConversationHandle(conversationService)
 	messageHandler := handlers.NewMessageHandle(messageService)
-	websocketHandler := websocket.NewHandler(hub, websocketService.HandleEvent)
+	websocketHandler := websocket.NewHandler(
+		hub,
+		websocketService.HandleConnect,
+		websocketService.HandleDisconnect,
+		websocketService.HandleEvent,
+	)
 
 	//app
 	application := app.New(cfg, db, userHandler, tokenService)

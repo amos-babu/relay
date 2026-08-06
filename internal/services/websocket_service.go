@@ -20,10 +20,7 @@ func NewWebsocketService(conversations repositories.ConversationRepository, hub 
 	}
 }
 
-func (s *WebSocketService) HandleEvent(
-	userID int64,
-	event websocket.Event,
-) {
+func (s *WebSocketService) HandleEvent(userID int64, event websocket.Event) {
 	switch event.Type {
 
 	case websocket.EventTyping:
@@ -86,4 +83,11 @@ func (s *WebSocketService) HandleEvent(
 	default:
 		log.Printf("unknown websocket event: %s", event.Type)
 	}
+}
+
+func (s *WebSocketService) HandleConnect(userID int64) {
+	log.Printf("user %d connected:", userID)
+}
+func (s *WebSocketService) HandleDisconnect(userID int64) {
+	log.Printf("user %d disconnected:", userID)
 }

@@ -9,10 +9,12 @@ import (
 )
 
 type Client struct {
-	UserID  int64
-	Conn    *websocket.Conn
-	Send    chan []byte
-	OnEvent func(userID int64, event Event)
+	UserID       int64
+	Conn         *websocket.Conn
+	Send         chan []byte
+	OnEvent      func(userID int64, event Event)
+	OnConnect    func(userID int64)
+	OnDisconnect func(userID int64)
 }
 
 const (

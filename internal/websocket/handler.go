@@ -10,14 +10,24 @@ import (
 )
 
 type Handler struct {
-	hub     *Hub
-	onEvent func(int64, Event)
+	hub *Hub
+
+	OnConnect    func(userID int64)
+	OnDisconnect func(userID int64)
+	onEvent      func(int64, Event)
 }
 
-func NewHandler(hub *Hub, onEvent func(int64, Event)) *Handler {
+func NewHandler(
+	hub *Hub,
+	OnConnect func(userID int64),
+	OnDisconnect func(userID int64),
+	onEvent func(int64, Event),
+) *Handler {
 	return &Handler{
-		hub:     hub,
-		onEvent: onEvent,
+		hub:          hub,
+		OnConnect:    OnConnect,
+		OnDisconnect: OnDisconnect,
+		onEvent:      onEvent,
 	}
 }
 
@@ -48,17 +58,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		UserID: userID,
 		Conn:   conn,
 		Send:   make(chan []byte, 256),
-		OnEvent: h.onEvent,
+
+		OnConnect:    h.OnConnect,
+		OnDisconnect: h.OnDisconnect,
+		OnEvent:      h.onEvent,
 	}
 
 	//Register
 	h.hub.Register(client)
+
+	//Calling onConnect event functions
+	if client.OnConnect != nil {
+		client.OnConnect(client.UserID)
+	}
 
 	go client.writePump()
 
 	defer func() {
 		//CleanUp
 		h.hub.Unregister(client)
+
+		if client.OnDisconnect != nil {
+			client.OnDisconnect(client.UserID)
+		}
+
 		close(client.Send)
 		conn.Close()
 

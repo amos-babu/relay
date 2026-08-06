@@ -43,6 +43,7 @@ func (h *Hub) Unregister(client *Client) {
 	}
 }
 
+// Broadcast to a user the message
 func (h *Hub) SendToUser(userID int64, message []byte) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -61,4 +62,33 @@ func (h *Hub) SendToUser(userID int64, message []byte) {
 		}
 	}
 
+}
+
+// Broadcast to a user the message
+func (h *Hub) Broadcast(message []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, clients := range h.clients {
+		for client := range clients {
+			select {
+			case client.Send <- message:
+
+			default:
+			}
+		}
+	}
+}
+
+// Helper method to check whether a User still has other connections
+func (h *Hub) HasConnections(userID int64) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	clients, ok := h.clients[userID]
+	if !ok {
+		return false
+	}
+
+	return len(clients) > 0
 }

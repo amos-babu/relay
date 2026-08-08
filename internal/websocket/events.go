@@ -19,6 +19,17 @@ type PresenceEvent struct {
 	Online bool  `json:"online"`
 }
 
+type ReadReceiptRequest struct {
+	MessageID      int64 `json:"message_id"`
+	ConversationID int64 `json:"conversation_id"`
+}
+
+type ReadReceiptEvent struct {
+	MessageID      int64 `json:"message_id"`
+	ConversationID int64 `json:"conversation_id"`
+	UserID         int64 `json:"user_id"`
+}
+
 const (
 	EventMessage     = "message"
 	EventTyping      = "typing"

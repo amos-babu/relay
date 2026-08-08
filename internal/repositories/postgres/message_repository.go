@@ -91,3 +91,20 @@ func (r *MessageRepository) ListForConversation(ctx context.Context, conversatio
 
 	return messages, nil
 }
+
+func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, userID int64) error {
+	const query = `
+	INSERT INTO message_reads (message_id, user_id)
+	VALUES ($1, $2)
+	ON CONFLICT (message_id, user_id)
+	DO UPDATE SET read_at = NOW();
+	`
+	_, err := r.db.ExecContext(
+		ctx,
+		query,
+		messageID,
+		userID,
+	)
+
+	return err
+}

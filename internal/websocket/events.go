@@ -31,8 +31,8 @@ type ReadReceiptEvent struct {
 }
 
 const (
-	EventMessage     = "message"
-	EventTyping      = "typing"
-	EventReadReceipt = "read_receipt"
-	EventPresence    = "presence"
+	EventMessage     = "message"      //Deliver message in realtime
+	EventTyping      = "typing"       //Show if recipient is typing
+	EventReadReceipt = "read_receipt" //Delivered message
+	EventPresence    = "presence"     //Online ? Offline
 )

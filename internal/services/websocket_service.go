@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
+	"relay/internal/domain"
 	"relay/internal/repositories"
 	"relay/internal/websocket"
 )
@@ -126,7 +128,20 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 	}
 
 	//Persist the read status on database
-	if err := s.messages.MarkAsRead(context.Background(), req.MessageID, userID); err != nil {
+	if err := s.messages.MarkAsRead(
+		context.Background(),
+		req.MessageID,
+		req.ConversationID,
+		userID,
+	); err != nil {
+		if errors.Is(err, domain.ErrMessageNotFound) {
+			log.Printf(
+				"read receipt rejected: message %d does not belong to conversation %d",
+				req.MessageID,
+				req.ConversationID,
+			)
+		}
+		log.Printf("failed to mark message %d as read: %v", req.MessageID, err)
 		return
 	}
 

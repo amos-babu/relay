@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
 )
@@ -92,19 +93,35 @@ func (r *MessageRepository) ListForConversation(ctx context.Context, conversatio
 	return messages, nil
 }
 
-func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, userID int64) error {
+func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) error {
 	const query = `
 	INSERT INTO message_reads (message_id, user_id)
-	VALUES ($1, $2)
+	SELECT id, $3
+	FROM messages
+	WHERE id = $1
+		AND conversation_id = $2
 	ON CONFLICT (message_id, user_id)
 	DO UPDATE SET read_at = NOW();
 	`
-	_, err := r.db.ExecContext(
+	result, err := r.db.ExecContext(
 		ctx,
 		query,
 		messageID,
+		conversationID,
 		userID,
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return domain.ErrMessageNotFound
+	}
+
+	return nil
 }

@@ -171,3 +171,42 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 		log.Printf("failed to encode response: %v", err)
 	}
 }
+
+func (h *MessageHandle) MarkAsRead(w http.ResponseWriter, r *http.Request) {
+	conversationIDStr := chi.URLParam(r, "conversationID")
+	messageIDStr := chi.URLParam(r, "messageID")
+
+	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(w, "invalid conversation id")
+		return
+	}
+
+	messageID, err := strconv.ParseInt(messageIDStr, 10, 64)
+	if err != nil {
+		response.BadRequest(w, "invalid message id")
+		return
+	}
+
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		response.Unauthorized(w, "unauthorized")
+		return
+	}
+
+	err = h.service.MarkAsRead(r.Context(), messageID, conversationID, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotConversationParticipant) {
+			response.Forbidden(
+				w,
+				"user is not a participant of this conversation",
+			)
+			return
+		}
+		response.InternalServerError(w)
+		return
+
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

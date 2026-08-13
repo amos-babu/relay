@@ -132,3 +132,20 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 		Reads:    reads,
 	}, nil
 }
+func (s *MessageService) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) error {
+	// Make sure the user belongs to the conversation.
+	ok, err := s.conversations.IsParticipant(
+		ctx,
+		conversationID,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if !ok {
+		return domain.ErrNotConversationParticipant
+	}
+
+	return s.messages.MarkAsRead(ctx, messageID, conversationID, userID)
+}

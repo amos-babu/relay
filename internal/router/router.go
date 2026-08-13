@@ -38,6 +38,7 @@ func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandle
 		r.Get("/conversations", conversationHandler.ListForUser)
 		r.Post("/conversations/{conversationID}/messages", messageHandler.Send)
 		r.Get("/conversations/{conversationID}/messages", messageHandler.ListForConversation)
+		r.Post("/conversations/{conversationID}/messages/{messageID}/read", messageHandler.MarkAsRead)
 
 		r.Get("/ws", websocketHandler.ServeHTTP)
 	})

@@ -1,5 +1,7 @@
 package websocket
 
+import "time"
+
 type Event struct {
 	Type    string      `json:"type"`
 	Payload interface{} `json:"payload"`
@@ -30,9 +32,17 @@ type ReadReceiptEvent struct {
 	UserID         int64 `json:"user_id"`
 }
 
+type MessageReadEvent struct {
+	MessageID      int64     `json:"message_id"`
+	ConversationID int64     `json:"conversation_id"`
+	UserID         int64     `json:"user_id"`
+	ReadAt         time.Time `json:"read_at"`
+}
+
 const (
 	EventMessage     = "message"      //Deliver message in realtime
 	EventTyping      = "typing"       //Show if recipient is typing
 	EventReadReceipt = "read_receipt" //Delivered message
 	EventPresence    = "presence"     //Online ? Offline
+	EventMessageRead = "presence"     //Read Message
 )

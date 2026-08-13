@@ -30,11 +30,17 @@ type SendMessageRequest struct {
 }
 
 type MessageResponse struct {
-	ID             int64     `json:"id"`
-	ConversationID int64     `json:"conversation_id"`
-	SenderID       int64     `json:"sender_id"`
-	Content        string    `json:"content"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             int64                 `json:"id"`
+	ConversationID int64                 `json:"conversation_id"`
+	SenderID       int64                 `json:"sender_id"`
+	Content        string                `json:"content"`
+	CreatedAt      time.Time             `json:"created_at"`
+	ReadBy         []MessageReadResponse `json:"read_by"`
+}
+
+type MessageReadResponse struct {
+	UserID int64     `json:"user_id"`
+	ReadAt time.Time `json:"read_at"`
 }
 
 func (h *MessageHandle) Send(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +117,7 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	messages, err := h.service.ListForConversation(r.Context(), conversationID, userID)
+	result, err := h.service.ListForConversation(r.Context(), conversationID, userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotConversationParticipant) {
 			response.Forbidden(w, "user is not a participant in this conversation")
@@ -122,14 +128,38 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	messages := result.Messages
+	reads := result.Reads
+
+	//Build a map
+	readsByMessage := make(map[int64][]MessageReadResponse)
+
+	for _, read := range reads {
+		readsByMessage[read.MessageID] = append(
+			readsByMessage[read.MessageID],
+			MessageReadResponse{
+				UserID: read.UserID,
+				ReadAt: read.ReadAt,
+			},
+		)
+	}
+
 	resp := make([]MessageResponse, len(messages))
+
 	for i, message := range messages {
+		readBy := readsByMessage[message.ID]
+
+		if readBy == nil {
+			readBy = []MessageReadResponse{}
+		}
+
 		resp[i] = MessageResponse{
 			ID:             message.ID,
 			ConversationID: message.ConversationID,
 			SenderID:       message.SenderID,
 			Content:        message.Content,
 			CreatedAt:      message.CreatedAt,
+			ReadBy:         readBy,
 		}
 	}
 

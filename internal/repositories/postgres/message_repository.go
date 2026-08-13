@@ -125,3 +125,49 @@ func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, con
 
 	return nil
 }
+
+func (r *MessageRepository) GetReadReceipts(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
+	const query = `
+		SELECT 
+			mr.message_id,
+			mr.user_id,
+			mr.read_at
+		FROM message_reads mr
+		INNER JOIN messages m
+			ON m.id = mr.message_id
+		WHERE m.conversation_id = $1
+		ORDER BY mr.message_id, mr.read_at;
+		`
+	rows, err := r.db.QueryContext(
+		ctx,
+		query,
+		conversationID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var receipts []*domain.MessageRead
+
+	for rows.Next() {
+		receipt := &domain.MessageRead{}
+
+		if err := rows.Scan(
+			&receipt.MessageID,
+			&receipt.UserID,
+			&receipt.ReadAt,
+		); err != nil {
+			return nil, err
+		}
+
+		receipts = append(receipts, receipt)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return receipts, nil
+}

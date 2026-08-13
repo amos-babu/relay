@@ -33,6 +33,11 @@ type MessageEvent struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+type ConversationMessages struct {
+	Messages []*models.Message
+	Reads    []*domain.MessageRead
+}
+
 func (s *MessageService) Send(ctx context.Context, conversationID int64, senderID int64, content string) (*models.Message, error) {
 	//Validate the content
 	content = strings.TrimSpace(content)
@@ -100,7 +105,7 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 	return message, nil
 }
 
-func (s *MessageService) ListForConversation(ctx context.Context, conversationID int64, userID int64) ([]*models.Message, error) {
+func (s *MessageService) ListForConversation(ctx context.Context, conversationID int64, userID int64) (*ConversationMessages, error) {
 	//Check if sender is a participant in this conversation
 	ok, err := s.conversations.IsParticipant(ctx, conversationID, userID)
 	if err != nil {
@@ -116,5 +121,14 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 		return nil, err
 	}
 
-	return messages, nil
+	//Fetch all read receipts for this conversation
+	reads, err := s.messages.GetReadReceipts(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ConversationMessages{
+		Messages: messages,
+		Reads:    reads,
+	}, nil
 }

@@ -107,7 +107,7 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 		return
 	}
 
-	var req websocket.ReadReceiptEvent
+	var req websocket.ReadReceiptRequest
 
 	if err := json.Unmarshal(payload, &req); err != nil {
 		return

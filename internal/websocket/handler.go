@@ -39,6 +39,7 @@ var upgrader = websocket.Upgrader{
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	//Get the authenticated User from Auth Middleware
 	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {

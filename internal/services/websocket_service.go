@@ -11,16 +11,16 @@ import (
 )
 
 type WebSocketService struct {
-	conversations repositories.ConversationRepository
-	messages      repositories.MessageRepository
-	hub           *websocket.Hub
+	conversations  repositories.ConversationRepository
+	messageService *MessageService
+	hub            *websocket.Hub
 }
 
-func NewWebsocketService(conversations repositories.ConversationRepository, messages repositories.MessageRepository, hub *websocket.Hub) *WebSocketService {
+func NewWebsocketService(conversations repositories.ConversationRepository, messageService *MessageService, hub *websocket.Hub) *WebSocketService {
 	return &WebSocketService{
-		conversations: conversations,
-		messages:      messages,
-		hub:           hub,
+		conversations:  conversations,
+		messageService: messageService,
+		hub:            hub,
 	}
 }
 
@@ -113,36 +113,40 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 		return
 	}
 
-	//Verify the user belongs to the conversation
-	ok, err := s.conversations.IsParticipant(
-		context.Background(),
-		req.ConversationID,
-		userID,
-	)
-	if err != nil {
-		return
-	}
-
-	if !ok {
-		return
-	}
-
-	//Persist the read status on database
-	if err := s.messages.MarkAsRead(
+	//Massage Service Call
+	readAt, err := s.messageService.MarkAsRead(
 		context.Background(),
 		req.MessageID,
 		req.ConversationID,
 		userID,
-	); err != nil {
+	)
+
+	if err != nil {
+		if errors.Is(err, domain.ErrNotConversationParticipant) {
+			log.Printf(
+				"read receipt rejected: user %d is not a participant in conversation %d",
+				userID,
+				req.ConversationID,
+			)
+			return
+		}
+
 		if errors.Is(err, domain.ErrMessageNotFound) {
 			log.Printf(
 				"read receipt rejected: message %d does not belong to conversation %d",
 				req.MessageID,
 				req.ConversationID,
 			)
+			return
 		}
-		log.Printf("failed to mark message %d as read: %v", req.MessageID, err)
+
+		log.Printf(
+			"failed to mark message %d as read: %v",
+			req.MessageID,
+			err,
+		)
 		return
+
 	}
 
 	// Build the event that other clients receive.
@@ -150,6 +154,7 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 		MessageID:      req.MessageID,
 		ConversationID: req.ConversationID,
 		UserID:         userID,
+		ReadAt:         readAt,
 	}
 
 	outgoing := websocket.Event{

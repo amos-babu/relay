@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
+	"time"
 )
 
 type MessageRepository struct {
@@ -93,7 +95,7 @@ func (r *MessageRepository) ListForConversation(ctx context.Context, conversatio
 	return messages, nil
 }
 
-func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) error {
+func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error) {
 	const query = `
 	INSERT INTO message_reads (message_id, user_id)
 	SELECT id, $3
@@ -101,29 +103,26 @@ func (r *MessageRepository) MarkAsRead(ctx context.Context, messageID int64, con
 	WHERE id = $1
 		AND conversation_id = $2
 	ON CONFLICT (message_id, user_id)
-	DO UPDATE SET read_at = NOW();
+	DO UPDATE SET read_at = NOW()
+	RETURNING read_at;
 	`
-	result, err := r.db.ExecContext(
+	var readAt time.Time
+
+	err := r.db.QueryRowContext(
 		ctx,
 		query,
 		messageID,
 		conversationID,
 		userID,
-	)
+	).Scan(&readAt)
 	if err != nil {
-		return err
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, domain.ErrMessageNotFound
+		}
+		return time.Time{}, err
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rows == 0 {
-		return domain.ErrMessageNotFound
-	}
-
-	return nil
+	return readAt, nil
 }
 
 func (r *MessageRepository) GetReadReceipts(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {

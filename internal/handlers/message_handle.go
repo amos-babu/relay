@@ -194,7 +194,7 @@ func (h *MessageHandle) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.service.MarkAsRead(r.Context(), messageID, conversationID, userID)
+	_, err = h.service.MarkAsRead(r.Context(), messageID, conversationID, userID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotConversationParticipant) {
 			response.Forbidden(

@@ -1,196 +1,705 @@
-[![GitHub Workflow Status (branch)](https://img.shields.io/github/actions/workflow/status/golang-migrate/migrate/ci.yaml?branch=master)](https://github.com/golang-migrate/migrate/actions/workflows/ci.yaml?query=branch%3Amaster)
-[![GoDoc](https://pkg.go.dev/badge/github.com/golang-migrate/migrate)](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)
-[![Coverage Status](https://img.shields.io/coveralls/github/golang-migrate/migrate/master.svg)](https://coveralls.io/github/golang-migrate/migrate?branch=master)
-[![packagecloud.io](https://img.shields.io/badge/deb-packagecloud.io-844fec.svg)](https://packagecloud.io/golang-migrate/migrate?filter=debs)
-[![Docker Pulls](https://img.shields.io/docker/pulls/migrate/migrate.svg)](https://hub.docker.com/r/migrate/migrate/)
-![Supported Go Versions](https://img.shields.io/badge/Go-1.24%2C%201.25-lightgrey.svg)
-[![GitHub Release](https://img.shields.io/github/release/golang-migrate/migrate.svg)](https://github.com/golang-migrate/migrate/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/golang-migrate/migrate/v4)](https://goreportcard.com/report/github.com/golang-migrate/migrate/v4)
+# Relay
 
-# migrate
+Relay is a real-time messaging backend built with Go. It provides
+authenticated REST APIs for users and conversations, persistent
+messaging with PostgreSQL, and WebSocket-based real-time communication.
 
-__Database migrations written in Go. Use as [CLI](#cli-usage) or import as [library](#use-in-your-go-project).__
+The project is designed around a simple principle:
 
-* Migrate reads migrations from [sources](#migration-sources)
-   and applies them in correct order to a [database](#databases).
-* Drivers are "dumb", migrate glues everything together and makes sure the logic is bulletproof.
-   (Keeps the drivers lightweight, too.)
-* Database drivers don't assume things or try to correct user input. When in doubt, fail.
-
-Forked from [mattes/migrate](https://github.com/mattes/migrate)
-
-## Databases
-
-Database drivers run migrations. [Add a new database?](database/driver.go)
-
-* [PostgreSQL](database/postgres)
-* [PGX v4](database/pgx)
-* [PGX v5](database/pgx/v5)
-* [Redshift](database/redshift)
-* [Ql](database/ql)
-* [Cassandra / ScyllaDB](database/cassandra)
-* [SQLite](database/sqlite)
-* [SQLite3](database/sqlite3) ([todo #165](https://github.com/mattes/migrate/issues/165))
-* [SQLCipher](database/sqlcipher)
-* [MySQL / MariaDB](database/mysql)
-* [Neo4j](database/neo4j)
-* [MongoDB](database/mongodb)
-* [CrateDB](database/crate) ([todo #170](https://github.com/mattes/migrate/issues/170))
-* [Shell](database/shell) ([todo #171](https://github.com/mattes/migrate/issues/171))
-* [Google Cloud Spanner](database/spanner)
-* [CockroachDB](database/cockroachdb)
-* [YugabyteDB](database/yugabytedb)
-* [ClickHouse](database/clickhouse)
-* [Firebird](database/firebird)
-* [MS SQL Server](database/sqlserver)
-* [rqlite](database/rqlite)
-
-### Database URLs
-
-Database connection strings are specified via URLs. The URL format is driver dependent but generally has the form: `dbdriver://username:password@host:port/dbname?param1=true&param2=false`
-
-Any [reserved URL characters](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_reserved_characters) need to be escaped. Note, the `%` character also [needs to be escaped](https://en.wikipedia.org/wiki/Percent-encoding#Percent-encoding_the_percent_character)
-
-Explicitly, the following characters need to be escaped:
-`!`, `#`, `$`, `%`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `/`, `:`, `;`, `=`, `?`, `@`, `[`, `]`
-
-It's easiest to always run the URL parts of your DB connection URL (e.g. username, password, etc) through an URL encoder. See the example Python snippets below:
-
-```bash
-$ python3 -c 'import urllib.parse; print(urllib.parse.quote(input("String to encode: "), ""))'
-String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
-FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
-$ python2 -c 'import urllib; print urllib.quote(raw_input("String to encode: "), "")'
-String to encode: FAKEpassword!#$%&'()*+,/:;=?@[]
-FAKEpassword%21%23%24%25%26%27%28%29%2A%2B%2C%2F%3A%3B%3D%3F%40%5B%5D
-$
-```
-
-## Migration Sources
-
-Source drivers read migrations from local or remote sources. [Add a new source?](source/driver.go)
-
-* [Filesystem](source/file) - read from filesystem
-* [io/fs](source/iofs) - read from a Go [io/fs](https://pkg.go.dev/io/fs#FS)
-* [Go-Bindata](source/go_bindata) - read from embedded binary data ([jteeuwen/go-bindata](https://github.com/jteeuwen/go-bindata))
-* [pkger](source/pkger) - read from embedded binary data ([markbates/pkger](https://github.com/markbates/pkger))
-* [GitHub](source/github) - read from remote GitHub repositories
-* [GitHub Enterprise](source/github_ee) - read from remote GitHub Enterprise repositories
-* [Bitbucket](source/bitbucket) - read from remote Bitbucket repositories
-* [Gitlab](source/gitlab) - read from remote Gitlab repositories
-* [AWS S3](source/aws_s3) - read from Amazon Web Services S3
-* [Google Cloud Storage](source/google_cloud_storage) - read from Google Cloud Platform Storage
-
-## CLI usage
-
-* Simple wrapper around this library.
-* Handles ctrl+c (SIGINT) gracefully.
-* No config search paths, no config files, no magic ENV var injections.
-
-[CLI Documentation](cmd/migrate) (includes CLI install instructions)
-
-### Basic usage
-
-```bash
-$ migrate -source file://path/to/migrations -database postgres://localhost:5432/database up 2
-```
-
-### Docker usage
-
-```bash
-$ docker run -v {{ migration dir }}:/migrations --network host migrate/migrate
-    -path=/migrations/ -database postgres://localhost:5432/database up 2
-```
-
-## Use in your Go project
-
-* API is stable and frozen for this release (v3 & v4).
-* Uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies.
-* To help prevent database corruptions, it supports graceful stops via `GracefulStop chan bool`.
-* Bring your own logger.
-* Uses `io.Reader` streams internally for low memory overhead.
-* Thread-safe and no goroutine leaks.
-
-__[Go Documentation](https://pkg.go.dev/github.com/golang-migrate/migrate/v4)__
-
-```go
-import (
-    "github.com/golang-migrate/migrate/v4"
-    _ "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/github"
-)
-
-func main() {
-    m, err := migrate.New(
-        "github://mattes:personal-access-token@mattes/migrate_test",
-        "postgres://localhost:5432/database?sslmode=enable")
-    m.Steps(2)
-}
-```
-
-Want to use an existing database client?
-
-```go
-import (
-    "database/sql"
-    _ "github.com/lib/pq"
-    "github.com/golang-migrate/migrate/v4"
-    "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/file"
-)
-
-func main() {
-    db, err := sql.Open("postgres", "postgres://localhost:5432/database?sslmode=enable")
-    driver, err := postgres.WithInstance(db, &postgres.Config{})
-    m, err := migrate.NewWithDatabaseInstance(
-        "file:///migrations",
-        "postgres", driver)
-    m.Up() // or m.Steps(2) if you want to explicitly set the number of migrations to run
-}
-```
-
-## Getting started
-
-Go to [getting started](GETTING_STARTED.md)
-
-## Tutorials
-
-* [CockroachDB](database/cockroachdb/TUTORIAL.md)
-* [PostgreSQL](database/postgres/TUTORIAL.md)
-
-(more tutorials to come)
-
-## Migration files
-
-Each migration has an up and down migration. [Why?](FAQ.md#why-two-separate-files-up-and-down-for-a-migration)
-
-```bash
-1481574547_create_users_table.up.sql
-1481574547_create_users_table.down.sql
-```
-
-[Best practices: How to write migrations.](MIGRATIONS.md)
-
-## Coming from another db migration tool?
-
-Check out [migradaptor](https://github.com/musinit/migradaptor/).
-*Note: migradaptor is not affiliated or supported by this project*
-
-## Versions
-
-Version | Supported? | Import | Notes
---------|------------|--------|------
-**master** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | New features and bug fixes arrive here first |
-**v4** | :white_check_mark: | `import "github.com/golang-migrate/migrate/v4"` | Used for stable releases |
-**v3** | :x: | `import "github.com/golang-migrate/migrate"` (with package manager) or `import "gopkg.in/golang-migrate/migrate.v3"` (not recommended) | **DO NOT USE** - No longer supported |
-
-## Development and Contributing
-
-Yes, please! [`Makefile`](Makefile) is your friend,
-read the [development guide](CONTRIBUTING.md).
-
-Also have a look at the [FAQ](FAQ.md).
+> **PostgreSQL is the source of truth for persistent state, while
+> WebSockets deliver live events to connected clients.**
 
 ---
 
-Looking for alternatives? [https://awesome-go.com/#database](https://awesome-go.com/#database).
+## Features
+
+### Authentication & Users
+
+- User registration
+- Login with email and password
+- Password hashing with bcrypt
+- JWT access tokens
+- Refresh-token support
+- Protected authenticated routes
+- Structured validation errors
+- Consistent HTTP error responses
+- Duplicate-email handling
+
+### Conversations
+
+- Create and manage conversations
+- Conversation participant management
+- Participant authorization
+- Protection against users accessing conversations they do not belong
+  to
+
+### Messaging
+
+- Send messages
+- Persist messages in PostgreSQL
+- Retrieve messages for a conversation
+- Conversation-level authorization
+- Real-time message delivery through WebSockets
+- Support for multiple active WebSocket connections per user
+
+### Real-Time Features
+
+Relay uses WebSockets for live communication.
+
+Supported events:
+
+Event Description Persistent
+
+---
+
+`message` Delivers a new message in real time Yes
+`typing` Indicates that a participant is typing No
+`presence` Indicates online/offline status No
+`read_receipt` Notifies participants that a message was read Yes
+
+#### Presence
+
+Relay tracks whether a user is currently connected.
+
+If a user has multiple WebSocket connections, they remain online until
+their last connection closes.
+
+#### Typing Indicators
+
+Typing events are delivered only to currently connected participants.
+They are intentionally not persisted because typing is temporary state.
+
+#### Read Receipts
+
+Read receipts are persisted in PostgreSQL and also delivered in real
+time.
+
+This means an offline participant can miss the WebSocket event but will
+still see the correct read state when messages are fetched later.
+
+Example:
+
+```json
+{
+  "type": "read_receipt",
+  "payload": {
+    "message_id": 24,
+    "conversation_id": 1,
+    "user_id": 2,
+    "read_at": "2026-08-13T16:20:43.31277+03:00"
+  }
+}
+```
+
+Read receipts can be triggered through both:
+
+```text
+HTTP API
+   ↓
+MarkAsRead
+   ↓
+PostgreSQL
+   ↓
+WebSocket Hub
+   ↓
+Connected participants
+```
+
+and:
+
+```text
+WebSocket
+   ↓
+HandleReadReceipt
+   ↓
+MarkAsRead
+   ↓
+PostgreSQL
+   ↓
+WebSocket Hub
+```
+
+Both paths use the same message service logic.
+
+---
+
+## Architecture
+
+Relay follows a layered architecture:
+
+```text
+                 ┌─────────────────────┐
+                 │      HTTP / WS      │
+                 │      Handlers       │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │      Services       │
+                 │  Business Logic     │
+                 └──────────┬──────────┘
+                            │
+                 ┌──────────┴──────────┐
+                 ▼                     ▼
+        ┌─────────────────┐    ┌─────────────────┐
+        │  Repositories   │    │ WebSocket Hub   │
+        │   PostgreSQL    │    │ Live Connections│
+        └────────┬────────┘    └────────┬────────┘
+                 │                      │
+                 ▼                      ▼
+        ┌─────────────────┐    ┌─────────────────┐
+        │   PostgreSQL    │    │ Connected Users │
+        └─────────────────┘    └─────────────────┘
+```
+
+### Core layers
+
+#### Handlers
+
+Responsible for:
+
+- HTTP request parsing
+- Authentication context
+- URL parameters
+- HTTP status codes
+- Response formatting
+
+#### Services
+
+Responsible for:
+
+- Business rules
+- Authorization checks
+- Validation
+- Coordinating repositories
+- Triggering real-time notifications where appropriate
+
+#### Repositories
+
+Responsible for:
+
+- PostgreSQL queries
+- Persistence
+- Database-specific operations
+
+#### WebSocket Hub
+
+Responsible for:
+
+- Tracking active WebSocket clients
+- Supporting multiple connections per user
+- Routing events to connected users
+- Avoiding new connections for every event
+
+---
+
+## WebSocket Architecture
+
+A WebSocket connection is established once and registered with the Hub.
+
+```text
+User 1 ───────────────┐
+User 2 ───────────────┼──> WebSocket Hub
+User 3 ───────────────┤
+User 4 ───────────────┘
+```
+
+When an event needs to be delivered:
+
+```go
+s.hub.SendToUser(userID, payload)
+```
+
+does **not** create a new network connection.
+
+It finds the user's existing WebSocket client(s) and queues the event on
+their `Send` channel.
+
+A user can therefore have multiple active connections:
+
+```text
+                 User 1
+                   │
+          ┌────────┼────────┐
+          ▼        ▼        ▼
+       Browser   Phone    Laptop
+          │        │        │
+          └────────┼────────┘
+                   ▼
+                  Hub
+```
+
+---
+
+## Offline Users
+
+WebSocket events are only delivered to currently connected clients.
+
+Persistent information is stored in PostgreSQL.
+
+For example:
+
+```text
+User 1 sends message
+        │
+        ▼
+PostgreSQL
+        │
+        ├── User 2 online  → WebSocket delivery
+        │
+        └── User 3 offline → no WebSocket delivery
+```
+
+When User 3 reconnects, the client can retrieve the conversation history
+from the database.
+
+This keeps WebSockets as a **real-time delivery mechanism**, rather than
+using them as the source of truth.
+
+---
+
+## Validation
+
+Relay uses structured validation errors.
+
+Example:
+
+```json
+{
+  "errors": {
+    "email": "invalid email address format"
+  }
+}
+```
+
+Validation errors are returned with HTTP `422 Unprocessable Entity`.
+
+This allows clients to display field-specific validation messages.
+
+---
+
+## Error Handling
+
+The API uses appropriate HTTP status codes for common failures.
+
+Examples:
+
+    Status Meaning
+
+---
+
+     `400` Invalid request
+     `401` Authentication required or invalid credentials
+     `403` Authenticated but not authorized
+     `409` Resource conflict
+     `422` Validation failure
+     `500` Unexpected server error
+
+---
+
+## Logging
+
+Relay includes request logging with request IDs.
+
+Example:
+
+```text
+[bbea2ebf-fec7-4d8f-b837-782db26019f5] POST /users/login 200 229.203293ms
+```
+
+Request IDs make it easier to trace an individual request through logs.
+
+---
+
+## Technology Stack
+
+- **Go**
+- **Chi** HTTP router
+- **PostgreSQL**
+- **Docker**
+- **Gorilla WebSocket**
+- **JWT**
+- **bcrypt**
+- SQL migrations
+
+---
+
+## Project Structure
+
+The project is organized roughly as follows:
+
+```text
+relay/
+├── cmd/
+│   └── api/
+│       └── main.go
+│
+├── internal/
+│   ├── app/
+│   ├── config/
+│   ├── database/
+│   ├── domain/
+│   ├── handlers/
+│   ├── middleware/
+│   ├── models/
+│   ├── repositories/
+│   │   └── postgres/
+│   ├── response/
+│   ├── router/
+│   ├── services/
+│   ├── token/
+│   ├── validation/
+│   └── websocket/
+│
+├── migrations/
+│
+├── .env
+├── go.mod
+└── README.md
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+Install:
+
+- Go
+- Docker
+- PostgreSQL (or run PostgreSQL through Docker)
+
+### Clone the project
+
+```bash
+git clone <repository-url>
+cd relay
+```
+
+### Configure environment variables
+
+Create a `.env` file at the project root.
+
+Example configuration:
+
+```env
+APP_PORT=8080
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=relay
+DB_PASSWORD=your_password
+DB_NAME=relay
+DB_SSLMODE=disable
+
+JWT_SECRET=your_secret
+```
+
+Use your project's actual configuration variable names if they differ.
+
+### Start PostgreSQL
+
+If PostgreSQL is running through Docker, start the database container
+before starting Relay.
+
+### Run migrations
+
+Run the project's migration command to create the required tables.
+
+### Start the API
+
+```bash
+go run ./cmd/api
+```
+
+The server should start on:
+
+```text
+http://localhost:8080
+```
+
+---
+
+## Testing
+
+Run the complete Go test suite:
+
+```bash
+go test ./...
+```
+
+A successful run should look similar to:
+
+```text
+?       relay/cmd/api
+?       relay/internal/app
+?       relay/internal/config
+ok      relay/internal/database
+?       relay/internal/domain
+...
+```
+
+---
+
+## API Overview
+
+The exact routes are defined by the router, but the application
+currently provides functionality around:
+
+### Users
+
+```text
+POST /users/register
+POST /users/login
+```
+
+### Conversations
+
+Conversation endpoints are protected and require an authenticated user.
+
+### Messages
+
+```text
+POST /conversations/{conversationID}/messages
+GET  /conversations/{conversationID}/messages
+POST /conversations/{conversationID}/messages/{messageID}/read
+```
+
+The read endpoint returns:
+
+```text
+204 No Content
+```
+
+after successfully marking the message as read.
+
+The operation also generates the real-time `read_receipt` event for
+connected participants.
+
+### WebSocket
+
+The WebSocket endpoint requires authentication and upgrades the HTTP
+connection into a persistent WebSocket connection.
+
+Clients send events using the common structure:
+
+```json
+{
+  "type": "event_type",
+  "payload": {}
+}
+```
+
+For example, a read receipt:
+
+```json
+{
+  "type": "read_receipt",
+  "payload": {
+    "message_id": 24,
+    "conversation_id": 1
+  }
+}
+```
+
+---
+
+## WebSocket Event Reference
+
+### Message
+
+```json
+{
+  "type": "message",
+  "payload": {
+    "id": 24,
+    "conversation_id": 1,
+    "sender_id": 1,
+    "content": "Hello",
+    "created_at": "2026-08-13T15:39:42+03:00"
+  }
+}
+```
+
+### Typing
+
+Client sends:
+
+```json
+{
+  "type": "typing",
+  "payload": {
+    "conversation_id": 1
+  }
+}
+```
+
+Other participants receive:
+
+```json
+{
+  "type": "typing",
+  "payload": {
+    "conversation_id": 1,
+    "user_id": 1
+  }
+}
+```
+
+### Presence
+
+```json
+{
+  "type": "presence",
+  "payload": {
+    "user_id": 1,
+    "online": true
+  }
+}
+```
+
+### Read Receipt
+
+Client sends:
+
+```json
+{
+  "type": "read_receipt",
+  "payload": {
+    "message_id": 24,
+    "conversation_id": 1
+  }
+}
+```
+
+Other participants receive:
+
+```json
+{
+  "type": "read_receipt",
+  "payload": {
+    "message_id": 24,
+    "conversation_id": 1,
+    "user_id": 2,
+    "read_at": "2026-08-13T16:20:43+03:00"
+  }
+}
+```
+
+---
+
+## Security Considerations
+
+Relay currently includes several security-related protections:
+
+- Passwords are stored using bcrypt hashes rather than plaintext.
+- JWT authentication protects private endpoints.
+- Conversation membership is checked before accessing conversation
+  data.
+- Users cannot mark messages in conversations they do not belong to.
+- Message IDs are checked against their conversation.
+- Invalid credentials return a generic error rather than revealing
+  whether an account exists.
+- Validation is performed before authentication-related database
+  operations where appropriate.
+
+For production deployment, additional hardening should include:
+
+- Strong production JWT secrets
+- Secure WebSocket origin validation
+- HTTPS/WSS
+- Rate limiting
+- Secure cookie/token handling where applicable
+- Database credential management through secrets
+- Production logging and monitoring
+
+---
+
+## Design Principles
+
+### Database as source of truth
+
+Messages and read receipts are persisted.
+
+### WebSocket as real-time transport
+
+WebSockets notify connected clients but are not relied upon for
+permanent storage.
+
+### Service layer owns business operations
+
+Handlers should remain thin and delegate business logic to services.
+
+### Repository layer owns persistence
+
+Services should not contain database-specific SQL.
+
+### Hub owns active WebSocket connections
+
+The Hub routes events through already-established connections.
+
+### Authorization before data access
+
+Conversation membership is verified before users can access or modify
+conversation resources.
+
+---
+
+## Current Status
+
+Core real-time messaging functionality is implemented and working:
+
+- [x] User registration
+- [x] User login
+- [x] JWT authentication
+- [x] Refresh tokens
+- [x] Structured validation errors
+- [x] Conversations
+- [x] Conversation participant authorization
+- [x] Persistent messages
+- [x] Message history
+- [x] WebSocket connections
+- [x] Real-time messages
+- [x] Typing indicators
+- [x] Online/offline presence
+- [x] Persistent read receipts
+- [x] Real-time read receipts
+- [x] HTTP-triggered real-time read receipts
+- [x] Multiple connections per user
+- [x] Request ID logging
+- [x] Automated Go test execution
+
+---
+
+## Future Improvements
+
+Potential future work includes:
+
+- Last-seen timestamps
+- Unread message counts
+- Message delivery states (`sent`, `delivered`, `read`)
+- WebSocket heartbeat/ping-pong handling
+- Automatic client reconnection
+- Better offline synchronization
+- Message pagination
+- Rate limiting
+- Redis/pub-sub for multi-server WebSocket deployments
+- Horizontal scaling
+- Production observability and metrics
+- Automated integration and WebSocket tests
+- API documentation with OpenAPI/Swagger
+
+---
+
+## License
+
+Add the project's license here.
+
+---
+
+## Author
+
+Built as a Go-based real-time messaging backend with a focus on clean
+architecture, persistent state, authentication, and real-time
+communication.

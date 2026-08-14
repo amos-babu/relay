@@ -114,7 +114,7 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 	}
 
 	//Massage Service Call
-	readAt, err := s.messageService.MarkAsRead(
+	_, err = s.messageService.MarkAsRead(
 		context.Background(),
 		req.MessageID,
 		req.ConversationID,
@@ -147,41 +147,6 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 		)
 		return
 
-	}
-
-	// Build the event that other clients receive.
-	readReceipt := websocket.ReadReceiptEvent{
-		MessageID:      req.MessageID,
-		ConversationID: req.ConversationID,
-		UserID:         userID,
-		ReadAt:         readAt,
-	}
-
-	outgoing := websocket.Event{
-		Type:    websocket.EventReadReceipt,
-		Payload: readReceipt,
-	}
-
-	message, err := json.Marshal(outgoing)
-	if err != nil {
-		return
-	}
-
-	// Send the receipt to the other participants.
-	participants, err := s.conversations.Participants(
-		context.Background(),
-		req.ConversationID,
-	)
-	if err != nil {
-		return
-	}
-
-	for _, participantID := range participants {
-		if participantID == userID {
-			continue
-		}
-
-		s.hub.SendToUser(participantID, message)
 	}
 
 }

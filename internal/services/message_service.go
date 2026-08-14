@@ -139,6 +139,7 @@ func (s *MessageService) MarkAsRead(
 	userID int64,
 ) (time.Time, error) {
 
+	//Check if user is a participant in this conversation
 	ok, err := s.conversations.IsParticipant(
 		ctx,
 		conversationID,
@@ -152,10 +153,50 @@ func (s *MessageService) MarkAsRead(
 		return time.Time{}, domain.ErrNotConversationParticipant
 	}
 
-	return s.messages.MarkAsRead(
+	//Mark the message as read
+	readAt, err := s.messages.MarkAsRead(
 		ctx,
 		messageID,
 		conversationID,
 		userID,
 	)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	//Get conversation participants
+	participants, err := s.conversations.Participants(ctx, conversationID)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	//Build the read receipt event
+	readReceipt := websocket.ReadReceiptEvent{
+		MessageID:      messageID,
+		ConversationID: conversationID,
+		UserID:         userID,
+		ReadAt:         readAt,
+	}
+
+	event := websocket.Event{
+		Type:    websocket.EventReadReceipt,
+		Payload: readReceipt,
+	}
+
+	//Marshall event
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	//Notify the other participants
+	for _, participantID := range participants {
+		if participantID == userID {
+			continue
+		}
+
+		s.hub.SendToUser(participantID, payload)
+	}
+
+	return readAt, nil
 }

@@ -149,6 +149,7 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 		HasMore:    hasMore,
 	}, nil
 }
+
 func (s *MessageService) MarkAsRead(
 	ctx context.Context,
 	messageID int64,

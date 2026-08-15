@@ -119,7 +119,7 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 	}
 
 	//Getting the limit
-	limit := 50
+	limit := 20
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		parsedLimit, err := strconv.Atoi(limitStr)
 		if err != nil || parsedLimit <= 0 {
@@ -204,7 +204,11 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 	if err := response.JSON(
 		w,
 		http.StatusOK,
-		resp,
+		PaginatedMessageResponse{
+			Messages:   resp,
+			NextCursor: result.NextCursor,
+			HasMore:    result.HasMore,
+		},
 	); err != nil {
 		log.Printf("failed to encode response: %v", err)
 	}

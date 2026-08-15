@@ -105,7 +105,7 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 	return message, nil
 }
 
-func (s *MessageService) ListForConversation(ctx context.Context, conversationID int64, userID int64) (*ConversationMessages, error) {
+func (s *MessageService) ListForConversation(ctx context.Context, conversationID int64, userID int64, limit int, before *int64) (*ConversationMessages, error) {
 	//Check if sender is a participant in this conversation
 	ok, err := s.conversations.IsParticipant(ctx, conversationID, userID)
 	if err != nil {
@@ -116,7 +116,7 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 	}
 
 	//Fetch the messages
-	messages, err := s.messages.ListForConversation(ctx, conversationID)
+	messages, err := s.messages.ListForConversation(ctx, conversationID, before, limit)
 	if err != nil {
 		return nil, err
 	}

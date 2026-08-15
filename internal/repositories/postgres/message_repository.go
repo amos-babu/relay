@@ -51,7 +51,7 @@ func (r *MessageRepository) Create(ctx context.Context, message *models.Message)
 	return nil
 }
 
-func (r *MessageRepository) ListForConversation(ctx context.Context, conversationID int64) ([]*models.Message, error) {
+func (r *MessageRepository) ListForConversation(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
 	const query = `
 	SELECT
 		id,
@@ -61,9 +61,11 @@ func (r *MessageRepository) ListForConversation(ctx context.Context, conversatio
 		created_at
 	FROM messages
 	WHERE conversation_id = $1
-	ORDER BY created_at ASC, id ASC;
+		AND ($2::bigint IS NULL OR id < $2)
+	ORDER BY id DESC
+	LIMIT $3;
 	`
-	rows, err := r.db.QueryContext(ctx, query, conversationID)
+	rows, err := r.db.QueryContext(ctx, query, conversationID, before, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -103,6 +103,7 @@ func (h *MessageHandle) Send(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Request) {
+	//Getting ConversationID from url
 	conversationIDStr := chi.URLParam(r, "conversationID")
 
 	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
@@ -111,13 +112,44 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	//Getting the limit
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			response.BadRequest(w, "invalid limit")
+			return
+		}
+
+		// Cap the maximum allowed limit
+		if parsedLimit > 100 {
+			parsedLimit = 100
+		}
+
+		limit = parsedLimit
+	}
+
+	//Getting before
+	var before *int64
+	if beforeStr := r.URL.Query().Get("before"); beforeStr != "" {
+		parsedBefore, err := strconv.ParseInt(beforeStr, 10, 64)
+		if err != nil || parsedBefore <= 0 {
+			response.BadRequest(w, "invalid before cursor")
+			return
+		}
+
+		before = &parsedBefore
+	}
+
+	//Getting Authenticated user from middleware
 	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
 		response.Unauthorized(w, "unauthorized")
 		return
 	}
 
-	result, err := h.service.ListForConversation(r.Context(), conversationID, userID)
+	//Calling the service layer
+	result, err := h.service.ListForConversation(r.Context(), conversationID, userID, limit, before)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotConversationParticipant) {
 			response.Forbidden(w, "user is not a participant in this conversation")

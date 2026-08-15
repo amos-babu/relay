@@ -38,6 +38,12 @@ type MessageResponse struct {
 	ReadBy         []MessageReadResponse `json:"read_by"`
 }
 
+type PaginatedMessageResponse struct {
+	Messages   []MessageResponse `json:"messages"`
+	NextCursor *int64            `json:"next_cursor"`
+	HasMore    bool              `json:"has_more"`
+}
+
 type MessageReadResponse struct {
 	UserID int64     `json:"user_id"`
 	ReadAt time.Time `json:"read_at"`

@@ -34,8 +34,10 @@ type MessageEvent struct {
 }
 
 type ConversationMessages struct {
-	Messages []*models.Message
-	Reads    []*domain.MessageRead
+	Messages   []*models.Message
+	Reads      []*domain.MessageRead
+	NextCursor *int64
+	HasMore    bool
 }
 
 func (s *MessageService) Send(ctx context.Context, conversationID int64, senderID int64, content string) (*models.Message, error) {
@@ -121,6 +123,19 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 		return nil, err
 	}
 
+	//Checking if we have received the extra message
+	hasMore := len(messages) > limit
+	if hasMore {
+		messages = messages[:limit]
+	}
+
+	var nextCursor *int64
+
+	if hasMore && len(messages) > 0 {
+		cursor := messages[len(messages)-1].ID
+		nextCursor = &cursor
+	}
+
 	//Fetch all read receipts for this conversation
 	reads, err := s.messages.GetReadReceipts(ctx, conversationID)
 	if err != nil {
@@ -128,8 +143,10 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 	}
 
 	return &ConversationMessages{
-		Messages: messages,
-		Reads:    reads,
+		Messages:   messages,
+		Reads:      reads,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	}, nil
 }
 func (s *MessageService) MarkAsRead(

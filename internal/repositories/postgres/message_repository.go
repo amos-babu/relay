@@ -63,7 +63,7 @@ func (r *MessageRepository) ListForConversation(ctx context.Context, conversatio
 	WHERE conversation_id = $1
 		AND ($2::bigint IS NULL OR id < $2)
 	ORDER BY id DESC
-	LIMIT $3;
+	LIMIT $3 + 1;
 	`
 	rows, err := r.db.QueryContext(ctx, query, conversationID, before, limit)
 	if err != nil {

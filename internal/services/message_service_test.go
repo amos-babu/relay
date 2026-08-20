@@ -5,12 +5,18 @@ import (
 	"errors"
 	"relay/internal/domain"
 	"relay/internal/models"
+	"relay/internal/websocket"
 	"testing"
 	"time"
 )
 
 type fakeConversationRepository struct {
 	IsParticipantFunc func(ctx context.Context, conversationID, userID int64) (bool, error)
+
+	ParticipantsFunc func(
+		ctx context.Context,
+		conversationID int64,
+	) ([]int64, error)
 }
 
 type fakeMessageRepository struct {
@@ -26,6 +32,16 @@ func (f *fakeConversationRepository) IsParticipant(
 		return f.IsParticipantFunc(ctx, conversationID, userID)
 	}
 	return false, nil
+}
+
+func (f *fakeConversationRepository) Participants(
+	ctx context.Context,
+	conversationID int64,
+) ([]int64, error) {
+	if f.ParticipantsFunc != nil {
+		return f.ParticipantsFunc(ctx, conversationID)
+	}
+	panic("Participants should not be called")
 }
 
 func (f *fakeMessageRepository) Create(ctx context.Context, message *models.Message) error {
@@ -53,13 +69,6 @@ func (f *fakeConversationRepository) FindDirectConversation(
 	user2ID int64,
 ) (*models.Conversation, error) {
 	panic("FindDirectConversation should not be called")
-}
-
-func (f *fakeConversationRepository) Participants(
-	ctx context.Context,
-	conversationID int64,
-) ([]int64, error) {
-	panic("Participants should not be called")
 }
 
 func (f *fakeMessageRepository) ListForConversation(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
@@ -120,6 +129,13 @@ func TestMessageService_Send_ParticipantCheckError(t *testing.T) {
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return false, expectedErr
 		},
+
+		ParticipantsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]int64, error) {
+			return []int64{1, 2}, nil
+		},
 	}
 
 	service := &MessageService{
@@ -144,8 +160,18 @@ func TestMessageService_Send_CreateError(t *testing.T) {
 	expectedErr := errors.New("failed to save message")
 
 	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
-			return false, expectedErr
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID, userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+
+		ParticipantsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]int64, error) {
+			return []int64{1, 2}, nil
 		},
 	}
 
@@ -179,6 +205,13 @@ func TestMessageService_Send_Success(t *testing.T) {
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
 		},
+
+		ParticipantsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]int64, error) {
+			return []int64{1, 2}, nil
+		},
 	}
 
 	fakeMessageRepo := &fakeMessageRepository{
@@ -190,6 +223,7 @@ func TestMessageService_Send_Success(t *testing.T) {
 	service := &MessageService{
 		conversations: fakeConversationRepo,
 		messages:      fakeMessageRepo,
+		hub:           websocket.NewHub(),
 	}
 
 	//Act

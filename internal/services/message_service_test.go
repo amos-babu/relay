@@ -98,6 +98,7 @@ func TestMessageService_Send_EmptyMessage(t *testing.T) {
 		)
 	}
 }
+
 func TestMessageService_Send_NotParticipant(t *testing.T) {
 	//Arrange: Setup fake repository behavior
 	fakeRepo := &fakeConversationRepository{
@@ -128,13 +129,6 @@ func TestMessageService_Send_ParticipantCheckError(t *testing.T) {
 	fakeRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return false, expectedErr
-		},
-
-		ParticipantsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]int64, error) {
-			return []int64{1, 2}, nil
 		},
 	}
 
@@ -214,8 +208,11 @@ func TestMessageService_Send_Success(t *testing.T) {
 		},
 	}
 
+	var createdMessage *models.Message
+
 	fakeMessageRepo := &fakeMessageRepository{
 		CreateFunc: func(ctx context.Context, message *models.Message) error {
+			createdMessage = message
 			return nil
 		},
 	}
@@ -228,6 +225,32 @@ func TestMessageService_Send_Success(t *testing.T) {
 
 	//Act
 	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
+
+	if createdMessage == nil {
+		t.Fatalf("expected message to be created")
+	}
+
+	if createdMessage.ConversationID != 1 {
+		t.Fatalf(
+			"expected conversationId 1, got id %v",
+			createdMessage.ConversationID,
+		)
+	}
+
+	if createdMessage.SenderID != 1 {
+		t.Fatalf(
+			"expected sender ID 1, got %d",
+			createdMessage.SenderID,
+		)
+	}
+
+	if createdMessage.Content != "Hello, world" {
+		t.Fatalf(
+			"expected content %q, got %q",
+			"Hello, world",
+			createdMessage.Content,
+		)
+	}
 
 	//Assert
 	if err != nil {

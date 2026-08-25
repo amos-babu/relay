@@ -11,13 +11,17 @@ import (
 	"time"
 )
 
+type MessageHub interface {
+	SendToUser(userID int64, message []byte)
+}
+
 type MessageService struct {
 	messages      repositories.MessageRepository
 	conversations repositories.ConversationRepository
-	hub           *websocket.Hub
+	hub           MessageHub
 }
 
-func NewMessageService(messages repositories.MessageRepository, conversations repositories.ConversationRepository, hub *websocket.Hub) *MessageService {
+func NewMessageService(messages repositories.MessageRepository, conversations repositories.ConversationRepository, hub MessageHub) *MessageService {
 	return &MessageService{
 		messages:      messages,
 		conversations: conversations,

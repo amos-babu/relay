@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"relay/internal/domain"
 	"relay/internal/models"
@@ -17,6 +18,16 @@ type fakeConversationRepository struct {
 		ctx context.Context,
 		conversationID int64,
 	) ([]int64, error)
+}
+
+type fakeHub struct {
+	sentTo   []int64
+	payloads [][]byte
+}
+
+func (f *fakeHub) SendToUser(userID int64, message []byte) {
+	f.sentTo = append(f.sentTo, userID)
+	f.payloads = append(f.payloads, message)
 }
 
 type fakeMessageRepository struct {
@@ -217,10 +228,12 @@ func TestMessageService_Send_Success(t *testing.T) {
 		},
 	}
 
+	fakeHub := &fakeHub{}
+
 	service := &MessageService{
 		conversations: fakeConversationRepo,
 		messages:      fakeMessageRepo,
-		hub:           websocket.NewHub(),
+		hub:           fakeHub,
 	}
 
 	//Act
@@ -255,6 +268,81 @@ func TestMessageService_Send_Success(t *testing.T) {
 	//Assert
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+
+}
+
+func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
+	// Arrange
+	fakeHub := &fakeHub{}
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+
+		ParticipantsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]int64, error) {
+			return []int64{1, 2}, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		CreateFunc: func(ctx context.Context, message *models.Message) error {
+			return nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+		hub:           fakeHub,
+	}
+
+	//Act
+	_, err := service.Send(
+		context.Background(),
+		1,
+		1,
+		"Hello, world",
+	)
+
+	//Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if len(fakeHub.sentTo) != 2 {
+		t.Fatalf(
+			"expected 2 deliveries, got %d",
+			len(fakeHub.sentTo),
+		)
+	}
+
+	if fakeHub.sentTo[0] != 1 {
+		t.Fatalf("expected first recipient 1, got %d", fakeHub.sentTo[0])
+	}
+
+	if fakeHub.sentTo[1] != 2 {
+		t.Fatalf("expected second recipient 2, got %d", fakeHub.sentTo[1])
+	}
+
+	var event websocket.Event
+
+	err = json.Unmarshal(fakeHub.payloads[0], &event)
+	if err != nil {
+		t.Fatalf("failed to decode websocket event: %v", err)
+	}
+
+	//Verify the event
+	if event.Type != websocket.EventMessage {
+		t.Fatalf(
+			"expected event type %q, got %q",
+			websocket.EventMessage,
+			event.Type,
+		)
 	}
 
 }

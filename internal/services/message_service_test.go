@@ -272,6 +272,8 @@ func TestMessageService_Send_Success(t *testing.T) {
 
 }
 
+
+
 func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 	// Arrange
 	fakeHub := &fakeHub{}
@@ -280,11 +282,7 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
 		},
-
-		ParticipantsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]int64, error) {
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
 			return []int64{1, 2}, nil
 		},
 	}
@@ -301,7 +299,7 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 		hub:           fakeHub,
 	}
 
-	//Act
+	// Act
 	_, err := service.Send(
 		context.Background(),
 		1,
@@ -309,34 +307,33 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 		"Hello, world",
 	)
 
-	//Assert
+	// Assert
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if len(fakeHub.sentTo) != 2 {
-		t.Fatalf(
-			"expected 2 deliveries, got %d",
-			len(fakeHub.sentTo),
-		)
+	// 1. Verify Recipients
+	expectedRecipients := []int64{1, 2}
+	if len(fakeHub.sentTo) != len(expectedRecipients) {
+		t.Fatalf("expected %d deliveries, got %d", len(expectedRecipients), len(fakeHub.sentTo))
 	}
 
-	if fakeHub.sentTo[0] != 1 {
-		t.Fatalf("expected first recipient 1, got %d", fakeHub.sentTo[0])
+	for i, expectedID := range expectedRecipients {
+		if fakeHub.sentTo[i] != expectedID {
+			t.Fatalf("expected recipient index %d to be %d, got %d", i, expectedID, fakeHub.sentTo[i])
+		}
 	}
 
-	if fakeHub.sentTo[1] != 2 {
-		t.Fatalf("expected second recipient 2, got %d", fakeHub.sentTo[1])
+	// 2. Verify WebSocket Event Payload safely
+	if len(fakeHub.payloads) == 0 {
+		t.Fatal("expected broadcast payload, got none")
 	}
 
 	var event websocket.Event
-
-	err = json.Unmarshal(fakeHub.payloads[0], &event)
-	if err != nil {
+	if err := json.Unmarshal(fakeHub.payloads[0], &event); err != nil {
 		t.Fatalf("failed to decode websocket event: %v", err)
 	}
 
-	//Verify the event
 	if event.Type != websocket.EventMessage {
 		t.Fatalf(
 			"expected event type %q, got %q",
@@ -344,5 +341,4 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 			event.Type,
 		)
 	}
-
 }

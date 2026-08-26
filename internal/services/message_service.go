@@ -154,13 +154,7 @@ func (s *MessageService) ListForConversation(ctx context.Context, conversationID
 	}, nil
 }
 
-func (s *MessageService) MarkAsRead(
-	ctx context.Context,
-	messageID int64,
-	conversationID int64,
-	userID int64,
-) (time.Time, error) {
-
+func (s *MessageService) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error) {
 	//Check if user is a participant in this conversation
 	ok, err := s.conversations.IsParticipant(
 		ctx,

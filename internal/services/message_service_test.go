@@ -13,11 +13,12 @@ import (
 
 type fakeConversationRepository struct {
 	IsParticipantFunc func(ctx context.Context, conversationID, userID int64) (bool, error)
+	ParticipantsFunc  func(ctx context.Context, conversationID int64) ([]int64, error)
+}
 
-	ParticipantsFunc func(
-		ctx context.Context,
-		conversationID int64,
-	) ([]int64, error)
+type fakeMessageRepository struct {
+	CreateFunc     func(ctx context.Context, message *models.Message) error
+	MarkAsReadFunc func(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error)
 }
 
 type fakeHub struct {
@@ -25,15 +26,7 @@ type fakeHub struct {
 	payloads [][]byte
 }
 
-func (f *fakeHub) SendToUser(userID int64, message []byte) {
-	f.sentTo = append(f.sentTo, userID)
-	f.payloads = append(f.payloads, message)
-}
-
-type fakeMessageRepository struct {
-	CreateFunc func(ctx context.Context, message *models.Message) error
-}
-
+// FakeConversationRepo Methods
 func (f *fakeConversationRepository) IsParticipant(
 	ctx context.Context,
 	conversationID int64,
@@ -44,7 +37,6 @@ func (f *fakeConversationRepository) IsParticipant(
 	}
 	return false, nil
 }
-
 func (f *fakeConversationRepository) Participants(
 	ctx context.Context,
 	conversationID int64,
@@ -54,11 +46,6 @@ func (f *fakeConversationRepository) Participants(
 	}
 	panic("Participants should not be called")
 }
-
-func (f *fakeMessageRepository) Create(ctx context.Context, message *models.Message) error {
-	return f.CreateFunc(ctx, message)
-}
-
 func (f *fakeConversationRepository) Create(
 	ctx context.Context,
 	creatorID int64,
@@ -66,14 +53,12 @@ func (f *fakeConversationRepository) Create(
 ) (*models.Conversation, error) {
 	panic("Create should not be called")
 }
-
 func (f *fakeConversationRepository) ListForUser(
 	ctx context.Context,
 	userID int64,
 ) ([]*models.Conversation, error) {
 	panic("ListForUser should not be called")
 }
-
 func (f *fakeConversationRepository) FindDirectConversation(
 	ctx context.Context,
 	user1ID int64,
@@ -82,16 +67,30 @@ func (f *fakeConversationRepository) FindDirectConversation(
 	panic("FindDirectConversation should not be called")
 }
 
+// FakeMessageRepo Methods
+func (f *fakeMessageRepository) Create(ctx context.Context, message *models.Message) error {
+	return f.CreateFunc(ctx, message)
+}
 func (f *fakeMessageRepository) ListForConversation(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
 	panic("ListForConversation should not be called")
 }
 func (f *fakeMessageRepository) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error) {
+	if f.MarkAsReadFunc != nil {
+		return f.MarkAsReadFunc(ctx, messageID, conversationID, userID)
+	}
 	panic("MarkAsRead should not be called")
 }
 func (f *fakeMessageRepository) GetReadReceipts(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
 	panic("GetReadReceipts should not be called")
 }
 
+// FakeHub Interface Methods
+func (f *fakeHub) SendToUser(userID int64, message []byte) {
+	f.sentTo = append(f.sentTo, userID)
+	f.payloads = append(f.payloads, message)
+}
+
+// Tests
 func TestMessageService_Send_EmptyMessage(t *testing.T) {
 	service := &MessageService{}
 
@@ -437,4 +436,202 @@ func TestMessageService_Send_ParticipantsError(t *testing.T) {
 		)
 	}
 
+}
+
+func TestMessageService_MarkAsRead_NotParticipant(t *testing.T) {
+	//Arrange
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return false, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+	}
+
+	//Act
+	_, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	//Assert
+	if !errors.Is(err, domain.ErrNotConversationParticipant) {
+		t.Fatalf(
+			"expected ErrNotConversationParticipant, got %v",
+			err,
+		)
+	}
+}
+
+func TestMessageService_MarkAsRead_ParticipantCheckError(t *testing.T) {
+	//Arrange
+	expectedErr := errors.New("database error")
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return false, expectedErr
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+	}
+
+	//Act
+	_, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	//Assert
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+}
+
+func TestMessageService_MarkAsRead_MessageNotFound(t *testing.T) {
+	//Arrange
+	expectedErr := domain.ErrMessageNotFound
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			return time.Time{}, expectedErr
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+	}
+
+	//Act
+	_, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	//Assert
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+
+}
+func TestMessageService_MarkAsRead_RepositoryError(t *testing.T) {
+	//Arrange
+	expectedErr := errors.New("database error")
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			return time.Time{}, expectedErr
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+	}
+
+	//Act
+	_, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	//Assert
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+}
+func TestMessageService_MarkAsRead_Success(t *testing.T) {
+	// Arrange
+	expectedReadAt := time.Now()
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+
+		ParticipantsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]int64, error) {
+			return []int64{1, 2}, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			return expectedReadAt, nil
+		},
+	}
+
+	fakeHub := &fakeHub{}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+		hub:           fakeHub,
+	}
+
+	// Act
+	readAt, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if readAt.IsZero() {
+		t.Fatal("expected readAt to be set")
+	}
+
+	if !readAt.Equal(expectedReadAt) {
+		t.Fatalf(
+			"expected readAt %v, got %v",
+			expectedReadAt,
+			readAt,
+		)
+	}
 }

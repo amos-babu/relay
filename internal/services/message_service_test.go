@@ -272,8 +272,6 @@ func TestMessageService_Send_Success(t *testing.T) {
 
 }
 
-
-
 func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 	// Arrange
 	fakeHub := &fakeHub{}
@@ -289,6 +287,9 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 
 	fakeMessageRepo := &fakeMessageRepository{
 		CreateFunc: func(ctx context.Context, message *models.Message) error {
+			message.ID = 24
+			message.CreatedAt = time.Now()
+
 			return nil
 		},
 	}
@@ -341,4 +342,99 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 			event.Type,
 		)
 	}
+
+	payloadBytes, err := json.Marshal(event.Payload)
+	if err != nil {
+		t.Fatalf("failed to re-marshal payload: %v", err)
+	}
+
+	//Unmarshall the messageevent
+	var messageEvent MessageEvent
+
+	if err := json.Unmarshal(payloadBytes, &messageEvent); err != nil {
+		t.Fatalf("failed to decode message payload: %v", err)
+	}
+
+	//Verifying the actual messages
+	if messageEvent.ID == 0 {
+		t.Fatal("expected message ID to be set")
+	}
+
+	if messageEvent.ConversationID != 1 {
+		t.Fatalf(
+			"expected conversation ID 1, got %d",
+			messageEvent.ConversationID,
+		)
+	}
+
+	if messageEvent.SenderID != 1 {
+		t.Fatalf(
+			"expected sender ID 1, got %d",
+			messageEvent.SenderID,
+		)
+	}
+
+	if messageEvent.Content != "Hello, world" {
+		t.Fatalf(
+			"expected content %q, got %q",
+			"Hello, world",
+			messageEvent.Content,
+		)
+	}
+
+}
+
+func TestMessageService_Send_ParticipantsError(t *testing.T) {
+	//Arrage
+	expectedErr := errors.New("failed to fetch participants")
+	fakeHub := &fakeHub{}
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
+			return nil, expectedErr
+		},
+	}
+
+	fakeMessageRepository := &fakeMessageRepository{
+		CreateFunc: func(ctx context.Context, message *models.Message) error {
+			message.ID = 1
+			message.CreatedAt = time.Now()
+			return nil
+		},
+	}
+
+	service := &MessageService{
+		messages:      fakeMessageRepository,
+		conversations: fakeConversationRepository,
+		hub:           fakeHub,
+	}
+
+	//Act
+	_, err := service.Send(
+		context.Background(),
+		1,
+		1,
+		"Hello, world",
+	)
+
+	//Assert
+	//Check if err is same as our error
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+
+	//Verify no messages were sent over websocket
+	if len(fakeHub.sentTo) != 0 {
+		t.Fatalf(
+			"expected no messages to be sent, got %d",
+			len(fakeHub.sentTo),
+		)
+	}
+
 }

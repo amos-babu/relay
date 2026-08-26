@@ -635,3 +635,207 @@ func TestMessageService_MarkAsRead_Success(t *testing.T) {
 		)
 	}
 }
+
+func TestMessageService_MarkAsRead_ParticipantsError(t *testing.T) {
+	//Arrage
+	expectedErr := errors.New("failed to fetch participants")
+	expectedReadAt := time.Now()
+	fakeHub := &fakeHub{}
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
+			return nil, expectedErr
+		},
+	}
+
+	fakeMessageRepository := &fakeMessageRepository{
+		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			return expectedReadAt, nil
+		},
+	}
+
+	service := &MessageService{
+		messages:      fakeMessageRepository,
+		conversations: fakeConversationRepository,
+		hub:           fakeHub,
+	}
+
+	//Act
+	_, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	//Assert
+	//Check if err is same as our error
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+
+	//Verify no messages were sent over websocket
+	if len(fakeHub.sentTo) != 0 {
+		t.Fatalf(
+			"expected no messages to be sent, got %d",
+			len(fakeHub.sentTo),
+		)
+	}
+
+}
+
+func TestMessageService_MarkAsRead_BroadcastsReadReceipt(t *testing.T) {
+	// Arrange
+	fakeHub := &fakeHub{}
+	expectedReadAt := time.Now()
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+
+		ParticipantsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]int64, error) {
+			return []int64{1, 2}, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			return expectedReadAt, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+		hub:           fakeHub,
+	}
+
+	// Act
+	readAt, err := service.MarkAsRead(
+		context.Background(),
+		1,
+		1,
+		1,
+	)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if !readAt.Equal(expectedReadAt) {
+		t.Fatalf(
+			"expected readAt %v, got %v",
+			expectedReadAt,
+			readAt,
+		)
+	}
+
+	// Verify only the other participant receives the event.
+	expectedRecipients := []int64{2}
+
+	if len(fakeHub.sentTo) != len(expectedRecipients) {
+		t.Fatalf(
+			"expected %d deliveries, got %d",
+			len(expectedRecipients),
+			len(fakeHub.sentTo),
+		)
+	}
+
+	for i, expectedID := range expectedRecipients {
+		if fakeHub.sentTo[i] != expectedID {
+			t.Fatalf(
+				"expected recipient index %d to be %d, got %d",
+				i,
+				expectedID,
+				fakeHub.sentTo[i],
+			)
+		}
+	}
+
+	// Verify a payload was sent.
+	if len(fakeHub.payloads) == 0 {
+		t.Fatal("expected broadcast payload, got none")
+	}
+
+	// Decode the WebSocket event.
+	var event websocket.Event
+
+	if err := json.Unmarshal(fakeHub.payloads[0], &event); err != nil {
+		t.Fatalf(
+			"failed to decode websocket event: %v",
+			err,
+		)
+	}
+
+	// Verify event type.
+	if event.Type != websocket.EventReadReceipt {
+		t.Fatalf(
+			"expected event type %q, got %q",
+			websocket.EventReadReceipt,
+			event.Type,
+		)
+	}
+
+	// Decode the read receipt payload.
+	payloadBytes, err := json.Marshal(event.Payload)
+	if err != nil {
+		t.Fatalf(
+			"failed to re-marshal payload: %v",
+			err,
+		)
+	}
+
+	var readReceipt websocket.ReadReceiptEvent
+
+	if err := json.Unmarshal(payloadBytes, &readReceipt); err != nil {
+		t.Fatalf(
+			"failed to decode read receipt: %v",
+			err,
+		)
+	}
+
+	// Verify read receipt contents.
+	if readReceipt.MessageID != 1 {
+		t.Fatalf(
+			"expected message ID 1, got %d",
+			readReceipt.MessageID,
+		)
+	}
+
+	if readReceipt.ConversationID != 1 {
+		t.Fatalf(
+			"expected conversation ID 1, got %d",
+			readReceipt.ConversationID,
+		)
+	}
+
+	if readReceipt.UserID != 1 {
+		t.Fatalf(
+			"expected user ID 1, got %d",
+			readReceipt.UserID,
+		)
+	}
+
+	if !readReceipt.ReadAt.Equal(expectedReadAt) {
+		t.Fatalf(
+			"expected readAt %v, got %v",
+			expectedReadAt,
+			readReceipt.ReadAt,
+		)
+	}
+}

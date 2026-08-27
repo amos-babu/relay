@@ -592,7 +592,7 @@ func TestMessageService_MarkAsRead_Success(t *testing.T) {
 			ctx context.Context,
 			conversationID int64,
 		) ([]int64, error) {
-			return []int64{1, 2}, nil
+			return []int64{1, 2, 3}, nil
 		},
 	}
 
@@ -837,5 +837,63 @@ func TestMessageService_MarkAsRead_BroadcastsReadReceipt(t *testing.T) {
 			expectedReadAt,
 			readReceipt.ReadAt,
 		)
+	}
+}
+func TestMessageService_MarkAsRead_BroadcastsToAllOtherParticipants(t *testing.T) {
+	//Arrange
+	expectedTime := time.Now()
+	fakeHub := &fakeHub{}
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
+			return []int64{1, 2, 3}, nil
+		},
+	}
+	fakeMessageRepository := &fakeMessageRepository{
+		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			return expectedTime, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepository,
+		messages:      fakeMessageRepository,
+		hub:           fakeHub,
+	}
+
+	//Act
+	_, err := service.MarkAsRead(
+		context.Background(),
+		24,
+		1,
+		1,
+	)
+
+	//Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	expectedRecipients := []int64{2, 3}
+	if len(fakeHub.sentTo) != len(expectedRecipients) {
+		t.Fatalf(
+			"expected %v deliveries, got %v",
+			len(expectedRecipients),
+			len(fakeHub.sentTo),
+		)
+	}
+
+	for i, expectedID := range expectedRecipients {
+		if fakeHub.sentTo[i] != expectedID {
+			t.Fatalf(
+				"expected recipient index %d to be %d, got %d",
+				i,
+				expectedID,
+				fakeHub.sentTo[i],
+			)
+		}
 	}
 }

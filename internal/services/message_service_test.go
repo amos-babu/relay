@@ -17,8 +17,10 @@ type fakeConversationRepository struct {
 }
 
 type fakeMessageRepository struct {
-	CreateFunc     func(ctx context.Context, message *models.Message) error
-	MarkAsReadFunc func(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error)
+	CreateFunc              func(ctx context.Context, message *models.Message) error
+	MarkAsReadFunc          func(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error)
+	ListForConversationFunc func(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error)
+	GetReadReceiptsFunc     func(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error)
 }
 
 type fakeHub struct {
@@ -72,6 +74,9 @@ func (f *fakeMessageRepository) Create(ctx context.Context, message *models.Mess
 	return f.CreateFunc(ctx, message)
 }
 func (f *fakeMessageRepository) ListForConversation(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
+	if f.ListForConversationFunc != nil {
+		return f.ListForConversationFunc(ctx, conversationID, before, limit)
+	}
 	panic("ListForConversation should not be called")
 }
 func (f *fakeMessageRepository) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error) {
@@ -81,6 +86,9 @@ func (f *fakeMessageRepository) MarkAsRead(ctx context.Context, messageID int64,
 	panic("MarkAsRead should not be called")
 }
 func (f *fakeMessageRepository) GetReadReceipts(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
+	if f.GetReadReceiptsFunc != nil {
+		return f.GetReadReceiptsFunc(ctx, conversationID)
+	}
 	panic("GetReadReceipts should not be called")
 }
 
@@ -895,5 +903,447 @@ func TestMessageService_MarkAsRead_BroadcastsToAllOtherParticipants(t *testing.T
 				fakeHub.sentTo[i],
 			)
 		}
+	}
+}
+
+func TestMessageService_ListForConversation_NotParticipant(t *testing.T) {
+	//Arrange
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return false, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepository,
+	}
+
+	//Act
+	_, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		20,
+		nil,
+	)
+
+	//Assert
+	if !errors.Is(err, domain.ErrNotConversationParticipant) {
+		t.Fatalf(
+			"expected ErrNotConversationParticipant, got %v",
+			err,
+		)
+	}
+}
+
+func TestMessageService_ListForConversation_ParticipantCheckError(t *testing.T) {
+	//Arrange
+	expectedErr := errors.New("database error")
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return false, expectedErr
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepository,
+	}
+
+	//Act
+	_, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		10,
+		nil,
+	)
+
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+}
+
+func TestMessageService_ListForConversation_RepositoryError(t *testing.T) {
+	//Arrange
+	expectedErr := errors.New("failed to fetch messages")
+
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepository := &fakeMessageRepository{
+		ListForConversationFunc: func(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
+			return nil, expectedErr
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepository,
+		messages:      fakeMessageRepository,
+	}
+
+	//Act
+	_, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		10,
+		nil,
+	)
+
+	//Assert
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+}
+
+func TestMessageService_ReadReceipt_RepositoryError(t *testing.T) {
+	//Arrange
+	expectedErr := errors.New("failed to fetch read receipts")
+
+	fakeConversationRepository := &fakeConversationRepository{
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepository := &fakeMessageRepository{
+		ListForConversationFunc: func(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
+			return []*models.Message{}, nil
+		},
+
+		GetReadReceiptsFunc: func(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
+			return nil, expectedErr
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepository,
+		messages:      fakeMessageRepository,
+	}
+
+	//Act
+	_, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		10,
+		nil,
+	)
+
+	//Assert
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf(
+			"expected %v, got %v",
+			expectedErr,
+			err,
+		)
+	}
+}
+
+func TestMessageService_ListForConversation_Success(t *testing.T) {
+	// Arrange
+	message1 := &models.Message{
+		ID:             1,
+		ConversationID: 1,
+		SenderID:       1,
+		Content:        "Hello",
+	}
+
+	message2 := &models.Message{
+		ID:             2,
+		ConversationID: 1,
+		SenderID:       2,
+		Content:        "Hi",
+	}
+
+	expectedMessages := []*models.Message{
+		message1,
+		message2,
+	}
+
+	expectedReads := []*domain.MessageRead{
+		{
+			MessageID: 1,
+			UserID:    2,
+		},
+	}
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		ListForConversationFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			before *int64,
+			limit int,
+		) ([]*models.Message, error) {
+			return expectedMessages, nil
+		},
+
+		GetReadReceiptsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]*domain.MessageRead, error) {
+			return expectedReads, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+	}
+
+	// Act
+	result, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		20,
+		nil,
+	)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("expected result, got nil")
+	}
+
+	if len(result.Messages) != 2 {
+		t.Fatalf(
+			"expected 2 messages, got %d",
+			len(result.Messages),
+		)
+	}
+
+	if result.Messages[0].ID != 1 {
+		t.Fatalf(
+			"expected first message ID 1, got %d",
+			result.Messages[0].ID,
+		)
+	}
+
+	if result.Messages[1].ID != 2 {
+		t.Fatalf(
+			"expected second message ID 2, got %d",
+			result.Messages[1].ID,
+		)
+	}
+
+	if len(result.Reads) != 1 {
+		t.Fatalf(
+			"expected 1 read receipt, got %d",
+			len(result.Reads),
+		)
+	}
+
+	if result.Reads[0].MessageID != 1 {
+		t.Fatalf(
+			"expected read receipt for message 1, got %d",
+			result.Reads[0].MessageID,
+		)
+	}
+
+	if result.HasMore {
+		t.Fatal("expected HasMore to be false")
+	}
+
+	if result.NextCursor != nil {
+		t.Fatal("expected NextCursor to be nil")
+	}
+}
+
+func TestMessageService_ListForConversation_HasMore(t *testing.T) {
+	// Arrange
+	messages := []*models.Message{
+		{ID: 101},
+		{ID: 102},
+		{ID: 103},
+	}
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		ListForConversationFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			before *int64,
+			limit int,
+		) ([]*models.Message, error) {
+			return messages, nil
+		},
+
+		GetReadReceiptsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]*domain.MessageRead, error) {
+			return []*domain.MessageRead{}, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+	}
+
+	// Act
+	result, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		2,
+		nil,
+	)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("expected result, got nil")
+	}
+
+	// We asked for 2 messages, so only 2 should be returned.
+	if len(result.Messages) != 2 {
+		t.Fatalf(
+			"expected 2 messages, got %d",
+			len(result.Messages),
+		)
+	}
+
+	if result.Messages[0].ID != 101 {
+		t.Fatalf(
+			"expected first message ID 101, got %d",
+			result.Messages[0].ID,
+		)
+	}
+
+	if result.Messages[1].ID != 102 {
+		t.Fatalf(
+			"expected second message ID 102, got %d",
+			result.Messages[1].ID,
+		)
+	}
+
+	// There was an extra message.
+	if !result.HasMore {
+		t.Fatal("expected HasMore to be true")
+	}
+
+	// Cursor should point to the last message we returned.
+	if result.NextCursor == nil {
+		t.Fatal("expected NextCursor, got nil")
+	}
+
+	if *result.NextCursor != 102 {
+		t.Fatalf(
+			"expected NextCursor 102, got %d",
+			*result.NextCursor,
+		)
+	}
+}
+
+func TestMessageService_ListForConversation_ExactlyLimit(t *testing.T) {
+	// Arrange
+	messages := []*models.Message{
+		{ID: 101},
+		{ID: 102},
+		{ID: 103},
+	}
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+	}
+
+	fakeMessageRepo := &fakeMessageRepository{
+		ListForConversationFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			before *int64,
+			limit int,
+		) ([]*models.Message, error) {
+			return messages, nil
+		},
+
+		GetReadReceiptsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]*domain.MessageRead, error) {
+			return []*domain.MessageRead{}, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+	}
+
+	// Act
+	result, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		3,
+		nil,
+	)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("expected result, got nil")
+	}
+
+	if len(result.Messages) != 3 {
+		t.Fatalf(
+			"expected 3 messages, got %d",
+			len(result.Messages),
+		)
+	}
+
+	if result.HasMore {
+		t.Fatal("expected HasMore to be false")
+	}
+
+	if result.NextCursor != nil {
+		t.Fatal("expected NextCursor to be nil")
 	}
 }

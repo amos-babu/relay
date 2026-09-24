@@ -24,6 +24,14 @@ type fakeMessageService struct {
 		senderID int64,
 		content string,
 	) (*models.Message, error)
+
+	listFunc func(
+		ctx context.Context,
+		conversationID int64,
+		userID int64,
+		limit int,
+		before *int64,
+	) (*services.ConversationMessages, error)
 }
 
 func (f *fakeMessageService) Send(
@@ -42,7 +50,7 @@ func (f *fakeMessageService) ListForConversation(
 	limit int,
 	before *int64,
 ) (*services.ConversationMessages, error) {
-	panic("not implemented")
+	return f.listFunc(ctx, conversationID, userID, limit, before)
 }
 
 func (f *fakeMessageService) MarkAsRead(
@@ -54,6 +62,7 @@ func (f *fakeMessageService) MarkAsRead(
 	panic("not implemented")
 }
 
+// SEND TESTS
 func TestMessageHandler_Send_InvalidConversationID(t *testing.T) {
 	fakeService := &fakeMessageService{}
 
@@ -366,3 +375,485 @@ func TestMessageHandler_Send_Successful(t *testing.T) {
 		)
 	}
 }
+
+// LIST FOR CONVESATION TESTS
+func TestMessageHandler_ListforConversation_InvalidConversationID(t *testing.T) {
+	fakeService := &fakeMessageService{}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/not-a-number/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusBadRequest,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListforConversation_InvalidLimit(t *testing.T) {
+	fakeService := &fakeMessageService{
+		listFunc: func(ctx context.Context, conversationID, userID int64, limit int, before *int64) (*services.ConversationMessages, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages?limit=abc",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusBadRequest,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_ZeroLimit(t *testing.T) {
+	fakeService := &fakeMessageService{
+		listFunc: func(ctx context.Context, conversationID, userID int64, limit int, before *int64) (*services.ConversationMessages, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages?limit=0",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusBadRequest,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_LimitCappedAt100(t *testing.T) {
+	var gotLimit int
+
+	fakeService := &fakeMessageService{
+		listFunc: func(ctx context.Context, conversationID, userID int64, limit int, before *int64) (*services.ConversationMessages, error) {
+			gotLimit = limit
+
+			return &services.ConversationMessages{
+				Messages: []*models.Message{},
+				Reads:    []*domain.MessageRead{},
+				HasMore:  false,
+			}, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages?limit=150",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"expected status 200, got %d",
+			rec.Code,
+		)
+	}
+
+	if gotLimit != 100 {
+		t.Fatalf(
+			"expected service to receive limit 100, got %d",
+			gotLimit,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_InvalidBefore(t *testing.T) {
+	fakeService := &fakeMessageService{
+		listFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+			limit int,
+			before *int64,
+		) (*services.ConversationMessages, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/conversations/123/messages?before=abc",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Get(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status 400, got %d",
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_Unauthorized(t *testing.T) {
+	fakeService := &fakeMessageService{
+		listFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+			limit int,
+			before *int64,
+		) (*services.ConversationMessages, error) {
+			t.Fatal("service should not be called")
+			return nil, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/conversations/123/messages",
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Get(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"expected status 401, got %d",
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_NotParticipant(t *testing.T) {
+	fakeService := &fakeMessageService{
+		listFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+			limit int,
+			before *int64,
+		) (*services.ConversationMessages, error) {
+			return nil, domain.ErrNotConversationParticipant
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/conversations/123/messages",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Get(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf(
+			"expected status 403, got %d",
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_InternalServerError(t *testing.T) {
+	fakeService := &fakeMessageService{
+		listFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+			limit int,
+			before *int64,
+		) (*services.ConversationMessages, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/conversations/123/messages",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Get(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf(
+			"expected status 500, got %d",
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_ListForConversation_Success(t *testing.T) {
+	// before := int64(50)
+
+	fakeService := &fakeMessageService{
+		listFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+			limit int,
+			gotBefore *int64,
+		) (*services.ConversationMessages, error) {
+
+			if conversationID != 123 {
+				t.Fatalf("expected conversation ID 123, got %d", conversationID)
+			}
+
+			if userID != 42 {
+				t.Fatalf("expected user ID 42, got %d", userID)
+			}
+
+			if limit != 20 {
+				t.Fatalf("expected limit 20, got %d", limit)
+			}
+
+			if gotBefore == nil {
+				t.Fatal("expected before cursor")
+			}
+
+			if *gotBefore != 50 {
+				t.Fatalf("expected before cursor 50, got %d", *gotBefore)
+			}
+
+			return &services.ConversationMessages{
+				Messages: []*models.Message{
+					{
+						ID:             100,
+						ConversationID: 123,
+						SenderID:       42,
+						Content:        "Hello",
+					},
+					{
+						ID:             99,
+						ConversationID: 123,
+						SenderID:       7,
+						Content:        "Hi there",
+					},
+				},
+				Reads: []*domain.MessageRead{
+					{
+						MessageID: 100,
+						UserID:    7,
+					},
+				},
+				NextCursor: func() *int64 {
+					v := int64(99)
+					return &v
+				}(),
+				HasMore: true,
+			}, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/conversations/123/messages?before=50",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Get(
+		"/conversations/{conversationID}/messages",
+		handler.ListForConversation,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"expected status 200, got %d",
+			rec.Code,
+		)
+	}
+
+	var response PaginatedMessageResponse
+
+	err := json.NewDecoder(rec.Body).Decode(&response)
+	if err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(response.Messages) != 2 {
+		t.Fatalf(
+			"expected 2 messages, got %d",
+			len(response.Messages),
+		)
+	}
+
+	if response.Messages[0].ID != 100 {
+		t.Fatalf(
+			"expected first message ID 100, got %d",
+			response.Messages[0].ID,
+		)
+	}
+
+	if response.Messages[0].Content != "Hello" {
+		t.Fatalf(
+			"expected first message content Hello, got %s",
+			response.Messages[0].Content,
+		)
+	}
+
+	if response.Messages[1].ID != 99 {
+		t.Fatalf(
+			"expected second message ID 99, got %d",
+			response.Messages[1].ID,
+		)
+	}
+
+	if response.Messages[1].Content != "Hi there" {
+		t.Fatalf(
+			"expected second message content Hi there, got %s",
+			response.Messages[1].Content,
+		)
+	}
+
+	if response.NextCursor == nil {
+		t.Fatal("expected next cursor")
+	}
+
+	if *response.NextCursor != 99 {
+		t.Fatalf(
+			"expected next cursor 99, got %d",
+			*response.NextCursor,
+		)
+	}
+
+	if !response.HasMore {
+		t.Fatal("expected has_more to be true")
+	}
+}
+
+// MARK AS READ TESTS

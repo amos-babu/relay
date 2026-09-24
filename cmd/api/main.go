@@ -61,7 +61,7 @@ func main() {
 	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)
 	conversationHandler := handlers.NewConversationHandle(conversationService)
-	messageHandler := handlers.NewMessageHandle(messageService)
+	messageHandler := handlers.NewMessageHandler(messageService)
 	websocketHandler := websocket.NewHandler(
 		hub,
 		websocketService.HandleConnect,

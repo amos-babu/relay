@@ -2,9 +2,15 @@ package handlers
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"relay/internal/models"
 	"relay/internal/services"
+	"strings"
+	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type fakeMessageService struct {
@@ -42,4 +48,94 @@ func (f *fakeMessageService) MarkAsRead(
 	userID int64,
 ) (time.Time, error) {
 	panic("not implemented")
+}
+
+func TestMessageHandler_Send_InvalidConversationID(t *testing.T) {
+	fakeService := &fakeMessageService{}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/not-a-number/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusBadRequest,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_Send_InvalidUserAuthentication(t *testing.T) {
+	fakeService := &fakeMessageService{}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusUnauthorized,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_Send_InvalidJSONBody(t *testing.T) {
+	fakeService := &fakeMessageService{}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusBadRequest,
+			rec.Code,
+		)
+	}
 }

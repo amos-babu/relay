@@ -8,19 +8,23 @@ import (
 	"relay/internal/domain"
 	"relay/internal/middleware"
 	"relay/internal/response"
-	"relay/internal/services"
+	// "relay/internal/services"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
-type MessageHandle struct {
-	service *services.MessageService
+// type MessageHandler struct {
+// 	service *services.MessageService
+// }
+
+type MessageHandler struct {
+	service MessageService
 }
 
-func NewMessageHandle(service *services.MessageService) *MessageHandle {
-	return &MessageHandle{
+func NewMessageHandle(service MessageService) *MessageHandler {
+	return &MessageHandler{
 		service: service,
 	}
 }
@@ -49,7 +53,7 @@ type MessageReadResponse struct {
 	ReadAt time.Time `json:"read_at"`
 }
 
-func (h *MessageHandle) Send(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) Send(w http.ResponseWriter, r *http.Request) {
 	conversationIDStr := chi.URLParam(r, "conversationID")
 
 	conversationID, err := strconv.ParseInt(conversationIDStr, 10, 64)
@@ -108,7 +112,7 @@ func (h *MessageHandle) Send(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) ListForConversation(w http.ResponseWriter, r *http.Request) {
 	//Getting ConversationID from url
 	conversationIDStr := chi.URLParam(r, "conversationID")
 
@@ -214,7 +218,7 @@ func (h *MessageHandle) ListForConversation(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (h *MessageHandle) MarkAsRead(w http.ResponseWriter, r *http.Request) {
+func (h *MessageHandler) MarkAsRead(w http.ResponseWriter, r *http.Request) {
 	conversationIDStr := chi.URLParam(r, "conversationID")
 	messageIDStr := chi.URLParam(r, "messageID")
 

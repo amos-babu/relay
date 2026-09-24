@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandler *handlers.ConversationHandle, messageHandler *handlers.MessageHandle, websocketHandler *websocket.Handler) {
+func Register(app *app.App, userHandle *handlers.UserHandler, conversationHandler *handlers.ConversationHandle, messageHandler *handlers.MessageHandler, websocketHandler *websocket.Handler) {
 	r := app.Router
 
 	//Request Id Middleware

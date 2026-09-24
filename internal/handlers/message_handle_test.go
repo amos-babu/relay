@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"relay/internal/domain"
+	"relay/internal/middleware"
 	"relay/internal/models"
 	"relay/internal/services"
 	"strings"
@@ -118,7 +121,11 @@ func TestMessageHandler_Send_InvalidJSONBody(t *testing.T) {
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/conversations/123/messages",
-		strings.NewReader(`{"content":"hello"}`),
+		strings.NewReader(`{"content":}`),
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
 	)
 
 	rec := httptest.NewRecorder()
@@ -136,6 +143,193 @@ func TestMessageHandler_Send_InvalidJSONBody(t *testing.T) {
 			"expected status %d, got %d",
 			http.StatusBadRequest,
 			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_Send_EmptyMessage(t *testing.T) {
+	fakeService := &fakeMessageService{
+		sendFunc: func(ctx context.Context, conversationID, senderID int64, content string) (*models.Message, error) {
+			return nil, domain.ErrEmptyMessage
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages",
+		strings.NewReader(`{"content":""}`),
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusBadRequest,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_Send_NotParticipant(t *testing.T) {
+	fakeService := &fakeMessageService{
+		sendFunc: func(ctx context.Context, conversationID, senderID int64, content string) (*models.Message, error) {
+			return nil, domain.ErrNotConversationParticipant
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusForbidden,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_Send_InsternalServerError(t *testing.T) {
+	fakeService := &fakeMessageService{
+		sendFunc: func(ctx context.Context, conversationID, senderID int64, content string) (*models.Message, error) {
+			return nil, errors.New("database connection failed")
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusInternalServerError,
+			rec.Code,
+		)
+	}
+}
+
+func TestMessageHandler_Send_Successful(t *testing.T) {
+	var gotConversationID int64
+	var gotSenderID int64
+	var gotContent string
+
+	fakeService := &fakeMessageService{
+
+		sendFunc: func(ctx context.Context, conversationID, senderID int64, content string) (*models.Message, error) {
+			gotConversationID = conversationID
+			gotSenderID = senderID
+			gotContent = content
+			return &models.Message{
+				ID:             100,
+				ConversationID: conversationID,
+				SenderID:       senderID,
+				Content:        content,
+			}, nil
+		},
+	}
+
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages",
+		strings.NewReader(`{"content":"hello"}`),
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages",
+		handler.Send,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf(
+			"expected status %d, got %d",
+			http.StatusCreated,
+			rec.Code,
+		)
+	}
+
+	if gotConversationID != 123 {
+		t.Errorf(
+			"expected conversation ID 123, got %d",
+			gotConversationID,
+		)
+	}
+
+	if gotSenderID != 42 {
+		t.Errorf(
+			"expected sender ID 42, got %d",
+			gotSenderID,
+		)
+	}
+
+	if gotContent != "hello" {
+		t.Errorf(
+			"expected content %q, got %q",
+			"hello",
+			gotContent,
 		)
 	}
 }

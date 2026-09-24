@@ -1347,3 +1347,93 @@ func TestMessageService_ListForConversation_ExactlyLimit(t *testing.T) {
 		t.Fatal("expected NextCursor to be nil")
 	}
 }
+func TestMessageService_ListForConversation_PassesPaginationCursor(t *testing.T) {
+	// Arrange
+
+	before := int64(102)
+
+	fakeConversationRepo := &fakeConversationRepository{
+		IsParticipantFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			userID int64,
+		) (bool, error) {
+			return true, nil
+		},
+	}
+
+	var receivedConversationID int64
+	var receivedBefore *int64
+	var receivedLimit int
+
+	fakeMessageRepo := &fakeMessageRepository{
+		ListForConversationFunc: func(
+			ctx context.Context,
+			conversationID int64,
+			before *int64,
+			limit int,
+		) ([]*models.Message, error) {
+
+			receivedConversationID = conversationID
+			receivedBefore = before
+			receivedLimit = limit
+
+			return []*models.Message{
+				{ID: 101},
+			}, nil
+		},
+
+		GetReadReceiptsFunc: func(
+			ctx context.Context,
+			conversationID int64,
+		) ([]*domain.MessageRead, error) {
+			return []*domain.MessageRead{}, nil
+		},
+	}
+
+	service := &MessageService{
+		conversations: fakeConversationRepo,
+		messages:      fakeMessageRepo,
+	}
+
+	// Act
+
+	_, err := service.ListForConversation(
+		context.Background(),
+		1,
+		1,
+		2,
+		&before,
+	)
+
+	// Assert
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if receivedConversationID != 1 {
+		t.Fatalf(
+			"expected conversation ID 1, got %d",
+			receivedConversationID,
+		)
+	}
+
+	if receivedBefore == nil {
+		t.Fatal("expected before cursor, got nil")
+	}
+
+	if *receivedBefore != 102 {
+		t.Fatalf(
+			"expected before cursor 102, got %d",
+			*receivedBefore,
+		)
+	}
+
+	if receivedLimit != 2 {
+		t.Fatalf(
+			"expected limit 2, got %d",
+			receivedLimit,
+		)
+	}
+}

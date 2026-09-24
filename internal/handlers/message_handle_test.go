@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -330,6 +331,38 @@ func TestMessageHandler_Send_Successful(t *testing.T) {
 			"expected content %q, got %q",
 			"hello",
 			gotContent,
+		)
+	}
+
+	var response MessageResponse
+
+	err := json.NewDecoder(rec.Body).Decode(&response)
+	if err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if response.ID != 100 {
+		t.Fatalf("expected response ID 100, got %d", response.ID)
+	}
+
+	if response.ConversationID != 123 {
+		t.Fatalf(
+			"expected response conversation ID 123, got %d",
+			response.ConversationID,
+		)
+	}
+
+	if response.SenderID != 42 {
+		t.Fatalf(
+			"expected response sender ID 42, got %d",
+			response.SenderID,
+		)
+	}
+
+	if response.Content != "hello" {
+		t.Fatalf(
+			"expected response content hello, got %s",
+			response.Content,
 		)
 	}
 }

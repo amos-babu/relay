@@ -997,3 +997,67 @@ func TestMessageHandler_MarkAsRead_InternalServerError(t *testing.T) {
 		)
 	}
 }
+
+func TestMessageHandler_MarkAsRead_Success(t *testing.T) {
+	var gotMessageID int64
+	var gotConversationID int64
+	var gotUserID int64
+
+	fakeService := &fakeMessageService{
+		markAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
+			gotMessageID = messageID
+			gotConversationID = conversationID
+			gotUserID = userID
+			return time.Now(), nil
+		},
+	}
+	handler := NewMessageHandler(fakeService)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/conversations/123/messages/100/read",
+		nil,
+	)
+
+	req = req.WithContext(
+		middleware.ContextWithUserID(req.Context(), 42),
+	)
+
+	rec := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Post(
+		"/conversations/{conversationID}/messages/{messageID}/read",
+		handler.MarkAsRead,
+	)
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf(
+			"expected status 204, got %d",
+			rec.Code,
+		)
+	}
+
+	if gotMessageID != 100 {
+		t.Fatalf(
+			"expected message ID 100, got %d",
+			gotMessageID,
+		)
+	}
+
+	if gotConversationID != 123 {
+		t.Fatalf(
+			"expected message ID 123, got %d",
+			gotConversationID,
+		)
+	}
+
+	if gotUserID != 42 {
+		t.Fatalf(
+			"expected message ID 42, got %d",
+			gotUserID,
+		)
+	}
+}

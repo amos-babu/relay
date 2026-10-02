@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/repositories"
@@ -18,14 +17,14 @@ type MessageHub interface {
 type MessageService struct {
 	messages      repositories.MessageRepository
 	conversations repositories.ConversationRepository
-	hub           MessageHub
+	publisher     EventPublisher
 }
 
-func NewMessageService(messages repositories.MessageRepository, conversations repositories.ConversationRepository, hub MessageHub) *MessageService {
+func NewMessageService(messages repositories.MessageRepository, conversations repositories.ConversationRepository, publisher EventPublisher) *MessageService {
 	return &MessageService{
 		messages:      messages,
 		conversations: conversations,
-		hub:           hub,
+		publisher:     publisher,
 	}
 }
 
@@ -68,12 +67,12 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		Content:        content,
 	}
 
-	//Save
+	//Save message
 	if err := s.messages.Create(ctx, message); err != nil {
 		return nil, err
 	}
 
-	//Check the other Participant in the conversation
+	//Get the other Participant in the conversation
 	participants, err := s.conversations.Participants(
 		ctx,
 		message.ConversationID,
@@ -91,22 +90,33 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		CreatedAt:      message.CreatedAt,
 	}
 
-	//Build the event
+	//Build the websocket event
 	event := websocket.Event{
 		Type:    websocket.EventMessage,
 		Payload: resp,
 	}
 
+	//Build Broadcast event
+	broadcast := websocket.BroadcastEvent{
+		RecipientIDs: participants,
+		Event:        event,
+	}
+
 	//Marshall the event
-	payload, err := json.Marshal(event)
-	if err != nil {
+	// payload, err := json.Marshal(broadcast)
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	//Publish the event
+	if err := s.publisher.Publish(ctx, broadcast); err != nil {
 		return nil, err
 	}
 
-	//Send Each message event to the websocket hub
-	for _, userID := range participants {
-		s.hub.SendToUser(userID, payload)
-	}
+	// for _, userID := range participants {
+	// 	s.hub.SendToUser(userID, payload)
+	// 	s.publisher.Publish()
+	// }
 
 	return message, nil
 }
@@ -199,19 +209,30 @@ func (s *MessageService) MarkAsRead(ctx context.Context, messageID int64, conver
 		Payload: readReceipt,
 	}
 
-	//Marshall event
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return time.Time{}, err
+	// Build the Broadcast Event
+	broadcast := websocket.BroadcastEvent{
+		RecipientIDs: participants,
+		Event:        event,
 	}
 
-	//Notify the other participants
-	for _, participantID := range participants {
-		if participantID == userID {
-			continue
-		}
+	// //Marshall event
+	// payload, err := json.Marshal(event)
+	// if err != nil {
+	// 	return time.Time{}, err
+	// }
 
-		s.hub.SendToUser(participantID, payload)
+	// //Notify the other participants
+	// for _, participantID := range participants {
+	// 	if participantID == userID {
+	// 		continue
+	// 	}
+
+	// 	s.hub.SendToUser(participantID, payload)
+	// }
+
+	// Broadcast the event through the event publisher
+	if err := s.publisher.Publish(ctx, broadcast); err != nil {
+		return time.Time{}, err
 	}
 
 	return readAt, nil

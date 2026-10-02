@@ -33,6 +33,11 @@ type ReadReceiptEvent struct {
 	ReadAt         time.Time `json:"read_at"`
 }
 
+type BroadcastEvent struct {
+	RecipientIDs []int64 `json:"recipient_ids"`
+	Event        Event   `json:"event"`
+}
+
 const (
 	EventMessage     = "message"      //Deliver message in realtime
 	EventTyping      = "typing"       //Show if recipient is typing

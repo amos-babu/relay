@@ -209,28 +209,21 @@ func (s *MessageService) MarkAsRead(ctx context.Context, messageID int64, conver
 		Payload: readReceipt,
 	}
 
+	recipients := make([]int64, 0, len(participants))
+
+	for _, participantID := range participants {
+		if participantID == userID {
+			continue
+		}
+
+		recipients = append(recipients, participantID)
+	}
 	// Build the Broadcast Event
 	broadcast := websocket.BroadcastEvent{
-		RecipientIDs: participants,
+		RecipientIDs: recipients,
 		Event:        event,
 	}
 
-	// //Marshall event
-	// payload, err := json.Marshal(event)
-	// if err != nil {
-	// 	return time.Time{}, err
-	// }
-
-	// //Notify the other participants
-	// for _, participantID := range participants {
-	// 	if participantID == userID {
-	// 		continue
-	// 	}
-
-	// 	s.hub.SendToUser(participantID, payload)
-	// }
-
-	// Broadcast the event through the event publisher
 	if err := s.publisher.Publish(ctx, broadcast); err != nil {
 		return time.Time{}, err
 	}

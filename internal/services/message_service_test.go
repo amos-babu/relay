@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"testing"
+	"time"
+
 	"relay/internal/domain"
 	"relay/internal/models"
 	"relay/internal/websocket"
-	"testing"
-	"time"
 )
 
 type fakeConversationRepository struct {
@@ -23,9 +24,8 @@ type fakeMessageRepository struct {
 	GetReadReceiptsFunc     func(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error)
 }
 
-type fakeHub struct {
-	sentTo   []int64
-	payloads [][]byte
+type fakeEventPublisher struct {
+	publishFunc func(ctx context.Context, event websocket.BroadcastEvent) error
 }
 
 // FakeConversationRepo Methods
@@ -39,6 +39,7 @@ func (f *fakeConversationRepository) IsParticipant(
 	}
 	return false, nil
 }
+
 func (f *fakeConversationRepository) Participants(
 	ctx context.Context,
 	conversationID int64,
@@ -48,6 +49,7 @@ func (f *fakeConversationRepository) Participants(
 	}
 	panic("Participants should not be called")
 }
+
 func (f *fakeConversationRepository) Create(
 	ctx context.Context,
 	creatorID int64,
@@ -55,12 +57,14 @@ func (f *fakeConversationRepository) Create(
 ) (*models.Conversation, error) {
 	panic("Create should not be called")
 }
+
 func (f *fakeConversationRepository) ListForUser(
 	ctx context.Context,
 	userID int64,
 ) ([]*models.Conversation, error) {
 	panic("ListForUser should not be called")
 }
+
 func (f *fakeConversationRepository) FindDirectConversation(
 	ctx context.Context,
 	user1ID int64,
@@ -73,18 +77,21 @@ func (f *fakeConversationRepository) FindDirectConversation(
 func (f *fakeMessageRepository) Create(ctx context.Context, message *models.Message) error {
 	return f.CreateFunc(ctx, message)
 }
+
 func (f *fakeMessageRepository) ListForConversation(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
 	if f.ListForConversationFunc != nil {
 		return f.ListForConversationFunc(ctx, conversationID, before, limit)
 	}
 	panic("ListForConversation should not be called")
 }
+
 func (f *fakeMessageRepository) MarkAsRead(ctx context.Context, messageID int64, conversationID int64, userID int64) (time.Time, error) {
 	if f.MarkAsReadFunc != nil {
 		return f.MarkAsReadFunc(ctx, messageID, conversationID, userID)
 	}
 	panic("MarkAsRead should not be called")
 }
+
 func (f *fakeMessageRepository) GetReadReceipts(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
 	if f.GetReadReceiptsFunc != nil {
 		return f.GetReadReceiptsFunc(ctx, conversationID)
@@ -92,13 +99,16 @@ func (f *fakeMessageRepository) GetReadReceipts(ctx context.Context, conversatio
 	panic("GetReadReceipts should not be called")
 }
 
-// FakeHub Interface Methods
-func (f *fakeHub) SendToUser(userID int64, message []byte) {
-	f.sentTo = append(f.sentTo, userID)
-	f.payloads = append(f.payloads, message)
+// FakeEventPublisher Interface Methods
+func (f *fakeEventPublisher) Publish(ctx context.Context, event websocket.BroadcastEvent) error {
+	if f.publishFunc != nil {
+		return f.publishFunc(ctx, event)
+	}
+	panic("Publish should not be called")
 }
 
 // Tests
+
 func TestMessageService_Send_EmptyMessage(t *testing.T) {
 	service := &MessageService{}
 
@@ -109,16 +119,12 @@ func TestMessageService_Send_EmptyMessage(t *testing.T) {
 		"  ",
 	)
 
-	if err != domain.ErrEmptyMessage {
-		t.Fatalf(
-			"expected ErrEmptyMessage, got %v",
-			err,
-		)
+	if !errors.Is(err, domain.ErrEmptyMessage) {
+		t.Fatalf("expected ErrEmptyMessage, got %v", err)
 	}
 }
 
 func TestMessageService_Send_NotParticipant(t *testing.T) {
-	//Arrange: Setup fake repository behavior
 	fakeRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return false, nil
@@ -129,20 +135,14 @@ func TestMessageService_Send_NotParticipant(t *testing.T) {
 		conversations: fakeRepo,
 	}
 
-	//Act
 	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
 
-	//Assert
 	if !errors.Is(err, domain.ErrNotConversationParticipant) {
-		t.Fatalf(
-			"expected ErrNotConversationParticipant, got %v",
-			err,
-		)
+		t.Fatalf("expected ErrNotConversationParticipant, got %v", err)
 	}
 }
 
 func TestMessageService_Send_ParticipantCheckError(t *testing.T) {
-	//Arrange: Setup fake repository behavior
 	expectedErr := errors.New("database error")
 	fakeRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
@@ -154,35 +154,21 @@ func TestMessageService_Send_ParticipantCheckError(t *testing.T) {
 		conversations: fakeRepo,
 	}
 
-	//Act
 	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 
 func TestMessageService_Send_CreateError(t *testing.T) {
-	//Arrange: Setup fake repository behavior
 	expectedErr := errors.New("failed to save message")
 
 	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID, userID int64,
-		) (bool, error) {
+		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
 		},
-
-		ParticipantsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]int64, error) {
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
 			return []int64{1, 2}, nil
 		},
 	}
@@ -198,30 +184,19 @@ func TestMessageService_Send_CreateError(t *testing.T) {
 		messages:      fakeMessageRepo,
 	}
 
-	//Act
 	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 
 func TestMessageService_Send_Success(t *testing.T) {
-	//Arrange: Setup fake repository behavior
 	fakeConversationRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
 		},
-
-		ParticipantsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]int64, error) {
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
 			return []int64{1, 2}, nil
 		},
 	}
@@ -235,53 +210,49 @@ func TestMessageService_Send_Success(t *testing.T) {
 		},
 	}
 
-	fakeHub := &fakeHub{}
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			return nil
+		},
+	}
 
 	service := &MessageService{
 		conversations: fakeConversationRepo,
 		messages:      fakeMessageRepo,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	//Act
 	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
 
 	if createdMessage == nil {
 		t.Fatalf("expected message to be created")
 	}
 
 	if createdMessage.ConversationID != 1 {
-		t.Fatalf(
-			"expected conversationId 1, got id %v",
-			createdMessage.ConversationID,
-		)
+		t.Fatalf("expected conversationId 1, got %d", createdMessage.ConversationID)
 	}
 
 	if createdMessage.SenderID != 1 {
-		t.Fatalf(
-			"expected sender ID 1, got %d",
-			createdMessage.SenderID,
-		)
+		t.Fatalf("expected sender ID 1, got %d", createdMessage.SenderID)
 	}
 
 	if createdMessage.Content != "Hello, world" {
-		t.Fatalf(
-			"expected content %q, got %q",
-			"Hello, world",
-			createdMessage.Content,
-		)
+		t.Fatalf("expected content %q, got %q", "Hello, world", createdMessage.Content)
 	}
-
-	//Assert
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
 }
 
 func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
-	// Arrange
-	fakeHub := &fakeHub{}
+	var publishedEvent *websocket.BroadcastEvent
+
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			publishedEvent = &event
+			return nil
+		},
+	}
 
 	fakeConversationRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
@@ -296,7 +267,6 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 		CreateFunc: func(ctx context.Context, message *models.Message) error {
 			message.ID = 24
 			message.CreatedAt = time.Now()
-
 			return nil
 		},
 	}
@@ -304,97 +274,68 @@ func TestMessageService_Send_BroadcastsMessage(t *testing.T) {
 	service := &MessageService{
 		conversations: fakeConversationRepo,
 		messages:      fakeMessageRepo,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	// Act
-	_, err := service.Send(
-		context.Background(),
-		1,
-		1,
-		"Hello, world",
-	)
-
-	// Assert
+	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	// 1. Verify Recipients
 	expectedRecipients := []int64{1, 2}
-	if len(fakeHub.sentTo) != len(expectedRecipients) {
-		t.Fatalf("expected %d deliveries, got %d", len(expectedRecipients), len(fakeHub.sentTo))
+	if len(publishedEvent.RecipientIDs) != len(expectedRecipients) {
+		t.Fatalf("expected %d deliveries, got %d", len(expectedRecipients), len(publishedEvent.RecipientIDs))
 	}
 
 	for i, expectedID := range expectedRecipients {
-		if fakeHub.sentTo[i] != expectedID {
-			t.Fatalf("expected recipient index %d to be %d, got %d", i, expectedID, fakeHub.sentTo[i])
+		if publishedEvent.RecipientIDs[i] != expectedID {
+			t.Fatalf("expected recipient index %d to be %d, got %d", i, expectedID, publishedEvent.RecipientIDs[i])
 		}
 	}
 
-	// 2. Verify WebSocket Event Payload safely
-	if len(fakeHub.payloads) == 0 {
-		t.Fatal("expected broadcast payload, got none")
+	if publishedEvent.Event.Type != websocket.EventMessage {
+		t.Fatalf("expected event type %q, got %q", websocket.EventMessage, publishedEvent.Event.Type)
 	}
 
-	var event websocket.Event
-	if err := json.Unmarshal(fakeHub.payloads[0], &event); err != nil {
-		t.Fatalf("failed to decode websocket event: %v", err)
-	}
-
-	if event.Type != websocket.EventMessage {
-		t.Fatalf(
-			"expected event type %q, got %q",
-			websocket.EventMessage,
-			event.Type,
-		)
-	}
-
-	payloadBytes, err := json.Marshal(event.Payload)
+	payloadBytes, err := json.Marshal(publishedEvent.Event.Payload)
 	if err != nil {
 		t.Fatalf("failed to re-marshal payload: %v", err)
 	}
 
-	//Unmarshall the messageevent
 	var messageEvent MessageEvent
-
 	if err := json.Unmarshal(payloadBytes, &messageEvent); err != nil {
 		t.Fatalf("failed to decode message payload: %v", err)
 	}
 
-	//Verifying the actual messages
 	if messageEvent.ID == 0 {
 		t.Fatal("expected message ID to be set")
 	}
 
 	if messageEvent.ConversationID != 1 {
-		t.Fatalf(
-			"expected conversation ID 1, got %d",
-			messageEvent.ConversationID,
-		)
+		t.Fatalf("expected conversation ID 1, got %d", messageEvent.ConversationID)
 	}
 
 	if messageEvent.SenderID != 1 {
-		t.Fatalf(
-			"expected sender ID 1, got %d",
-			messageEvent.SenderID,
-		)
+		t.Fatalf("expected sender ID 1, got %d", messageEvent.SenderID)
 	}
 
 	if messageEvent.Content != "Hello, world" {
-		t.Fatalf(
-			"expected content %q, got %q",
-			"Hello, world",
-			messageEvent.Content,
-		)
+		t.Fatalf("expected content %q, got %q", "Hello, world", messageEvent.Content)
 	}
-
 }
 
 func TestMessageService_Send_ParticipantsError(t *testing.T) {
-	//Arrage
+	var publishedEvent *websocket.BroadcastEvent
+
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			publishedEvent = &event
+			return nil
+		},
+	}
+
 	expectedErr := errors.New("failed to fetch participants")
-	fakeHub := &fakeHub{}
+
 	fakeConversationRepository := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
@@ -415,39 +356,21 @@ func TestMessageService_Send_ParticipantsError(t *testing.T) {
 	service := &MessageService{
 		messages:      fakeMessageRepository,
 		conversations: fakeConversationRepository,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	//Act
-	_, err := service.Send(
-		context.Background(),
-		1,
-		1,
-		"Hello, world",
-	)
+	_, err := service.Send(context.Background(), 1, 1, "Hello, world")
 
-	//Assert
-	//Check if err is same as our error
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 
-	//Verify no messages were sent over websocket
-	if len(fakeHub.sentTo) != 0 {
-		t.Fatalf(
-			"expected no messages to be sent, got %d",
-			len(fakeHub.sentTo),
-		)
+	if publishedEvent != nil {
+		t.Fatal("expected no event to be published")
 	}
-
 }
 
 func TestMessageService_MarkAsRead_NotParticipant(t *testing.T) {
-	//Arrange
 	fakeConversationRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return false, nil
@@ -458,25 +381,14 @@ func TestMessageService_MarkAsRead_NotParticipant(t *testing.T) {
 		conversations: fakeConversationRepo,
 	}
 
-	//Act
-	_, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
+	_, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 
-	//Assert
 	if !errors.Is(err, domain.ErrNotConversationParticipant) {
-		t.Fatalf(
-			"expected ErrNotConversationParticipant, got %v",
-			err,
-		)
+		t.Fatalf("expected ErrNotConversationParticipant, got %v", err)
 	}
 }
 
 func TestMessageService_MarkAsRead_ParticipantCheckError(t *testing.T) {
-	//Arrange
 	expectedErr := errors.New("database error")
 	fakeConversationRepo := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
@@ -488,26 +400,14 @@ func TestMessageService_MarkAsRead_ParticipantCheckError(t *testing.T) {
 		conversations: fakeConversationRepo,
 	}
 
-	//Act
-	_, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
+	_, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 
 func TestMessageService_MarkAsRead_MessageNotFound(t *testing.T) {
-	//Arrange
 	expectedErr := domain.ErrMessageNotFound
 
 	fakeConversationRepo := &fakeConversationRepository{
@@ -527,26 +427,14 @@ func TestMessageService_MarkAsRead_MessageNotFound(t *testing.T) {
 		messages:      fakeMessageRepo,
 	}
 
-	//Act
-	_, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
+	_, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
-
 }
+
 func TestMessageService_MarkAsRead_RepositoryError(t *testing.T) {
-	//Arrange
 	expectedErr := errors.New("database error")
 
 	fakeConversationRepo := &fakeConversationRepository{
@@ -566,40 +454,21 @@ func TestMessageService_MarkAsRead_RepositoryError(t *testing.T) {
 		messages:      fakeMessageRepo,
 	}
 
-	//Act
-	_, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
+	_, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
+
 func TestMessageService_MarkAsRead_Success(t *testing.T) {
-	// Arrange
 	expectedReadAt := time.Now()
 
 	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			userID int64,
-		) (bool, error) {
+		IsParticipantFunc: func(ctx context.Context, conversationID int64, userID int64) (bool, error) {
 			return true, nil
 		},
-
-		ParticipantsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]int64, error) {
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
 			return []int64{1, 2, 3}, nil
 		},
 	}
@@ -610,23 +479,19 @@ func TestMessageService_MarkAsRead_Success(t *testing.T) {
 		},
 	}
 
-	fakeHub := &fakeHub{}
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			return nil
+		},
+	}
 
 	service := &MessageService{
 		conversations: fakeConversationRepo,
 		messages:      fakeMessageRepo,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	// Act
-	readAt, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
-
-	// Assert
+	readAt, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -636,19 +501,23 @@ func TestMessageService_MarkAsRead_Success(t *testing.T) {
 	}
 
 	if !readAt.Equal(expectedReadAt) {
-		t.Fatalf(
-			"expected readAt %v, got %v",
-			expectedReadAt,
-			readAt,
-		)
+		t.Fatalf("expected readAt %v, got %v", expectedReadAt, readAt)
 	}
 }
 
 func TestMessageService_MarkAsRead_ParticipantsError(t *testing.T) {
-	//Arrage
 	expectedErr := errors.New("failed to fetch participants")
 	expectedReadAt := time.Now()
-	fakeHub := &fakeHub{}
+
+	var publishedEvent *websocket.BroadcastEvent
+
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			publishedEvent = &event
+			return nil
+		},
+	}
+
 	fakeConversationRepository := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
@@ -667,55 +536,37 @@ func TestMessageService_MarkAsRead_ParticipantsError(t *testing.T) {
 	service := &MessageService{
 		messages:      fakeMessageRepository,
 		conversations: fakeConversationRepository,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	//Act
-	_, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
+	_, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 
-	//Assert
-	//Check if err is same as our error
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 
-	//Verify no messages were sent over websocket
-	if len(fakeHub.sentTo) != 0 {
-		t.Fatalf(
-			"expected no messages to be sent, got %d",
-			len(fakeHub.sentTo),
-		)
+	if publishedEvent != nil {
+		t.Fatal("expected no event to be published")
 	}
-
 }
 
 func TestMessageService_MarkAsRead_BroadcastsReadReceipt(t *testing.T) {
-	// Arrange
-	fakeHub := &fakeHub{}
+	var publishedEvent *websocket.BroadcastEvent
+
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			publishedEvent = &event
+			return nil
+		},
+	}
+
 	expectedReadAt := time.Now()
 
 	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			userID int64,
-		) (bool, error) {
+		IsParticipantFunc: func(ctx context.Context, conversationID int64, userID int64) (bool, error) {
 			return true, nil
 		},
-
-		ParticipantsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]int64, error) {
+		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
 			return []int64{1, 2}, nil
 		},
 	}
@@ -729,137 +580,80 @@ func TestMessageService_MarkAsRead_BroadcastsReadReceipt(t *testing.T) {
 	service := &MessageService{
 		conversations: fakeConversationRepo,
 		messages:      fakeMessageRepo,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	// Act
-	readAt, err := service.MarkAsRead(
-		context.Background(),
-		1,
-		1,
-		1,
-	)
-
-	// Assert
+	readAt, err := service.MarkAsRead(context.Background(), 1, 1, 1)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
 	if !readAt.Equal(expectedReadAt) {
-		t.Fatalf(
-			"expected readAt %v, got %v",
-			expectedReadAt,
-			readAt,
-		)
+		t.Fatalf("expected readAt %v, got %v", expectedReadAt, readAt)
 	}
 
-	// Verify only the other participant receives the event.
-	expectedRecipients := []int64{2}
+	if publishedEvent == nil {
+		t.Fatal("expected event to be published")
+	}
 
-	if len(fakeHub.sentTo) != len(expectedRecipients) {
-		t.Fatalf(
-			"expected %d deliveries, got %d",
-			len(expectedRecipients),
-			len(fakeHub.sentTo),
-		)
+	expectedRecipients := []int64{2}
+	if len(publishedEvent.RecipientIDs) != len(expectedRecipients) {
+		t.Fatalf("expected %d recipients, got %d", len(expectedRecipients), len(publishedEvent.RecipientIDs))
 	}
 
 	for i, expectedID := range expectedRecipients {
-		if fakeHub.sentTo[i] != expectedID {
-			t.Fatalf(
-				"expected recipient index %d to be %d, got %d",
-				i,
-				expectedID,
-				fakeHub.sentTo[i],
-			)
+		if publishedEvent.RecipientIDs[i] != expectedID {
+			t.Fatalf("expected recipient index %d to be %d, got %d", i, expectedID, publishedEvent.RecipientIDs[i])
 		}
 	}
 
-	// Verify a payload was sent.
-	if len(fakeHub.payloads) == 0 {
-		t.Fatal("expected broadcast payload, got none")
+	if publishedEvent.Event.Type != websocket.EventReadReceipt {
+		t.Fatalf("expected event type %q, got %q", websocket.EventReadReceipt, publishedEvent.Event.Type)
 	}
 
-	// Decode the WebSocket event.
-	var event websocket.Event
-
-	if err := json.Unmarshal(fakeHub.payloads[0], &event); err != nil {
-		t.Fatalf(
-			"failed to decode websocket event: %v",
-			err,
-		)
+	readReceipt, ok := publishedEvent.Event.Payload.(websocket.ReadReceiptEvent)
+	if !ok {
+		t.Fatalf("expected ReadReceiptEvent payload, got %T", publishedEvent.Event.Payload)
 	}
 
-	// Verify event type.
-	if event.Type != websocket.EventReadReceipt {
-		t.Fatalf(
-			"expected event type %q, got %q",
-			websocket.EventReadReceipt,
-			event.Type,
-		)
-	}
-
-	// Decode the read receipt payload.
-	payloadBytes, err := json.Marshal(event.Payload)
-	if err != nil {
-		t.Fatalf(
-			"failed to re-marshal payload: %v",
-			err,
-		)
-	}
-
-	var readReceipt websocket.ReadReceiptEvent
-
-	if err := json.Unmarshal(payloadBytes, &readReceipt); err != nil {
-		t.Fatalf(
-			"failed to decode read receipt: %v",
-			err,
-		)
-	}
-
-	// Verify read receipt contents.
 	if readReceipt.MessageID != 1 {
-		t.Fatalf(
-			"expected message ID 1, got %d",
-			readReceipt.MessageID,
-		)
+		t.Fatalf("expected message ID 1, got %d", readReceipt.MessageID)
 	}
 
 	if readReceipt.ConversationID != 1 {
-		t.Fatalf(
-			"expected conversation ID 1, got %d",
-			readReceipt.ConversationID,
-		)
+		t.Fatalf("expected conversation ID 1, got %d", readReceipt.ConversationID)
 	}
 
 	if readReceipt.UserID != 1 {
-		t.Fatalf(
-			"expected user ID 1, got %d",
-			readReceipt.UserID,
-		)
+		t.Fatalf("expected user ID 1, got %d", readReceipt.UserID)
 	}
 
 	if !readReceipt.ReadAt.Equal(expectedReadAt) {
-		t.Fatalf(
-			"expected readAt %v, got %v",
-			expectedReadAt,
-			readReceipt.ReadAt,
-		)
+		t.Fatalf("expected readAt %v, got %v", expectedReadAt, readReceipt.ReadAt)
 	}
 }
+
 func TestMessageService_MarkAsRead_BroadcastsToAllOtherParticipants(t *testing.T) {
-	//Arrange
+	var publishedEvent *websocket.BroadcastEvent
+
+	fakePublisher := &fakeEventPublisher{
+		publishFunc: func(ctx context.Context, event websocket.BroadcastEvent) error {
+			publishedEvent = &event
+			return nil
+		},
+	}
+
 	expectedTime := time.Now()
-	fakeHub := &fakeHub{}
+
 	fakeConversationRepository := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return true, nil
 		},
-
 		ParticipantsFunc: func(ctx context.Context, conversationID int64) ([]int64, error) {
 			return []int64{1, 2, 3}, nil
 		},
 	}
+
 	fakeMessageRepository := &fakeMessageRepository{
 		MarkAsReadFunc: func(ctx context.Context, messageID, conversationID, userID int64) (time.Time, error) {
 			return expectedTime, nil
@@ -869,45 +663,31 @@ func TestMessageService_MarkAsRead_BroadcastsToAllOtherParticipants(t *testing.T
 	service := &MessageService{
 		conversations: fakeConversationRepository,
 		messages:      fakeMessageRepository,
-		hub:           fakeHub,
+		publisher:     fakePublisher,
 	}
 
-	//Act
-	_, err := service.MarkAsRead(
-		context.Background(),
-		24,
-		1,
-		1,
-	)
-
-	//Assert
+	_, err := service.MarkAsRead(context.Background(), 24, 1, 1)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
+	if publishedEvent == nil {
+		t.Fatal("expected event to be published")
+	}
+
 	expectedRecipients := []int64{2, 3}
-	if len(fakeHub.sentTo) != len(expectedRecipients) {
-		t.Fatalf(
-			"expected %v deliveries, got %v",
-			len(expectedRecipients),
-			len(fakeHub.sentTo),
-		)
+	if len(publishedEvent.RecipientIDs) != len(expectedRecipients) {
+		t.Fatalf("expected %d recipients, got %d", len(expectedRecipients), len(publishedEvent.RecipientIDs))
 	}
 
 	for i, expectedID := range expectedRecipients {
-		if fakeHub.sentTo[i] != expectedID {
-			t.Fatalf(
-				"expected recipient index %d to be %d, got %d",
-				i,
-				expectedID,
-				fakeHub.sentTo[i],
-			)
+		if publishedEvent.RecipientIDs[i] != expectedID {
+			t.Fatalf("expected recipient index %d to be %d, got %d", i, expectedID, publishedEvent.RecipientIDs[i])
 		}
 	}
 }
 
 func TestMessageService_ListForConversation_NotParticipant(t *testing.T) {
-	//Arrange
 	fakeConversationRepository := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
 			return false, nil
@@ -918,26 +698,14 @@ func TestMessageService_ListForConversation_NotParticipant(t *testing.T) {
 		conversations: fakeConversationRepository,
 	}
 
-	//Act
-	_, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		20,
-		nil,
-	)
+	_, err := service.ListForConversation(context.Background(), 1, 1, 20, nil)
 
-	//Assert
 	if !errors.Is(err, domain.ErrNotConversationParticipant) {
-		t.Fatalf(
-			"expected ErrNotConversationParticipant, got %v",
-			err,
-		)
+		t.Fatalf("expected ErrNotConversationParticipant, got %v", err)
 	}
 }
 
 func TestMessageService_ListForConversation_ParticipantCheckError(t *testing.T) {
-	//Arrange
 	expectedErr := errors.New("database error")
 	fakeConversationRepository := &fakeConversationRepository{
 		IsParticipantFunc: func(ctx context.Context, conversationID, userID int64) (bool, error) {
@@ -949,26 +717,14 @@ func TestMessageService_ListForConversation_ParticipantCheckError(t *testing.T) 
 		conversations: fakeConversationRepository,
 	}
 
-	//Act
-	_, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		10,
-		nil,
-	)
+	_, err := service.ListForConversation(context.Background(), 1, 1, 10, nil)
 
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 
 func TestMessageService_ListForConversation_RepositoryError(t *testing.T) {
-	//Arrange
 	expectedErr := errors.New("failed to fetch messages")
 
 	fakeConversationRepository := &fakeConversationRepository{
@@ -988,27 +744,14 @@ func TestMessageService_ListForConversation_RepositoryError(t *testing.T) {
 		messages:      fakeMessageRepository,
 	}
 
-	//Act
-	_, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		10,
-		nil,
-	)
+	_, err := service.ListForConversation(context.Background(), 1, 1, 10, nil)
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 
 func TestMessageService_ReadReceipt_RepositoryError(t *testing.T) {
-	//Arrange
 	expectedErr := errors.New("failed to fetch read receipts")
 
 	fakeConversationRepository := &fakeConversationRepository{
@@ -1021,7 +764,6 @@ func TestMessageService_ReadReceipt_RepositoryError(t *testing.T) {
 		ListForConversationFunc: func(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
 			return []*models.Message{}, nil
 		},
-
 		GetReadReceiptsFunc: func(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
 			return nil, expectedErr
 		},
@@ -1032,27 +774,14 @@ func TestMessageService_ReadReceipt_RepositoryError(t *testing.T) {
 		messages:      fakeMessageRepository,
 	}
 
-	//Act
-	_, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		10,
-		nil,
-	)
+	_, err := service.ListForConversation(context.Background(), 1, 1, 10, nil)
 
-	//Assert
 	if !errors.Is(err, expectedErr) {
-		t.Fatalf(
-			"expected %v, got %v",
-			expectedErr,
-			err,
-		)
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 
 func TestMessageService_ListForConversation_Success(t *testing.T) {
-	// Arrange
 	message1 := &models.Message{
 		ID:             1,
 		ConversationID: 1,
@@ -1067,11 +796,7 @@ func TestMessageService_ListForConversation_Success(t *testing.T) {
 		Content:        "Hi",
 	}
 
-	expectedMessages := []*models.Message{
-		message1,
-		message2,
-	}
-
+	expectedMessages := []*models.Message{message1, message2}
 	expectedReads := []*domain.MessageRead{
 		{
 			MessageID: 1,
@@ -1080,29 +805,16 @@ func TestMessageService_ListForConversation_Success(t *testing.T) {
 	}
 
 	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			userID int64,
-		) (bool, error) {
+		IsParticipantFunc: func(ctx context.Context, conversationID int64, userID int64) (bool, error) {
 			return true, nil
 		},
 	}
 
 	fakeMessageRepo := &fakeMessageRepository{
-		ListForConversationFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			before *int64,
-			limit int,
-		) ([]*models.Message, error) {
+		ListForConversationFunc: func(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
 			return expectedMessages, nil
 		},
-
-		GetReadReceiptsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]*domain.MessageRead, error) {
+		GetReadReceiptsFunc: func(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
 			return expectedReads, nil
 		},
 	}
@@ -1112,16 +824,7 @@ func TestMessageService_ListForConversation_Success(t *testing.T) {
 		messages:      fakeMessageRepo,
 	}
 
-	// Act
-	result, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		20,
-		nil,
-	)
-
-	// Assert
+	result, err := service.ListForConversation(context.Background(), 1, 1, 20, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -1131,38 +834,23 @@ func TestMessageService_ListForConversation_Success(t *testing.T) {
 	}
 
 	if len(result.Messages) != 2 {
-		t.Fatalf(
-			"expected 2 messages, got %d",
-			len(result.Messages),
-		)
+		t.Fatalf("expected 2 messages, got %d", len(result.Messages))
 	}
 
 	if result.Messages[0].ID != 1 {
-		t.Fatalf(
-			"expected first message ID 1, got %d",
-			result.Messages[0].ID,
-		)
+		t.Fatalf("expected first message ID 1, got %d", result.Messages[0].ID)
 	}
 
 	if result.Messages[1].ID != 2 {
-		t.Fatalf(
-			"expected second message ID 2, got %d",
-			result.Messages[1].ID,
-		)
+		t.Fatalf("expected second message ID 2, got %d", result.Messages[1].ID)
 	}
 
 	if len(result.Reads) != 1 {
-		t.Fatalf(
-			"expected 1 read receipt, got %d",
-			len(result.Reads),
-		)
+		t.Fatalf("expected 1 read receipt, got %d", len(result.Reads))
 	}
 
 	if result.Reads[0].MessageID != 1 {
-		t.Fatalf(
-			"expected read receipt for message 1, got %d",
-			result.Reads[0].MessageID,
-		)
+		t.Fatalf("expected read receipt for message 1, got %d", result.Reads[0].MessageID)
 	}
 
 	if result.HasMore {
@@ -1175,37 +863,25 @@ func TestMessageService_ListForConversation_Success(t *testing.T) {
 }
 
 func TestMessageService_ListForConversation_HasMore(t *testing.T) {
-	// Arrange
+	// Arrange: fetch limit of 2, but repository returns 3 items (limit + 1 keyset pattern)
+	limit := 2
 	messages := []*models.Message{
-		{ID: 101},
-		{ID: 102},
 		{ID: 103},
+		{ID: 102},
+		{ID: 101}, // Extra item signaling a next page
 	}
 
 	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			userID int64,
-		) (bool, error) {
+		IsParticipantFunc: func(ctx context.Context, conversationID int64, userID int64) (bool, error) {
 			return true, nil
 		},
 	}
 
 	fakeMessageRepo := &fakeMessageRepository{
-		ListForConversationFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			before *int64,
-			limit int,
-		) ([]*models.Message, error) {
+		ListForConversationFunc: func(ctx context.Context, conversationID int64, before *int64, limit int) ([]*models.Message, error) {
 			return messages, nil
 		},
-
-		GetReadReceiptsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]*domain.MessageRead, error) {
+		GetReadReceiptsFunc: func(ctx context.Context, conversationID int64) ([]*domain.MessageRead, error) {
 			return []*domain.MessageRead{}, nil
 		},
 	}
@@ -1216,224 +892,28 @@ func TestMessageService_ListForConversation_HasMore(t *testing.T) {
 	}
 
 	// Act
-	result, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		2,
-		nil,
-	)
+	result, err := service.ListForConversation(context.Background(), 1, 1, limit, nil)
 
 	// Assert
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if result == nil {
-		t.Fatal("expected result, got nil")
-	}
-
-	// We asked for 2 messages, so only 2 should be returned.
-	if len(result.Messages) != 2 {
-		t.Fatalf(
-			"expected 2 messages, got %d",
-			len(result.Messages),
-		)
-	}
-
-	if result.Messages[0].ID != 101 {
-		t.Fatalf(
-			"expected first message ID 101, got %d",
-			result.Messages[0].ID,
-		)
-	}
-
-	if result.Messages[1].ID != 102 {
-		t.Fatalf(
-			"expected second message ID 102, got %d",
-			result.Messages[1].ID,
-		)
-	}
-
-	// There was an extra message.
 	if !result.HasMore {
 		t.Fatal("expected HasMore to be true")
 	}
 
-	// Cursor should point to the last message we returned.
+	if len(result.Messages) != limit {
+		t.Fatalf("expected returned messages length to match limit (%d), got %d", limit, len(result.Messages))
+	}
+
 	if result.NextCursor == nil {
-		t.Fatal("expected NextCursor, got nil")
+		t.Fatal("expected NextCursor to be non-nil")
 	}
 
-	if *result.NextCursor != 102 {
-		t.Fatalf(
-			"expected NextCursor 102, got %d",
-			*result.NextCursor,
-		)
-	}
-}
-
-func TestMessageService_ListForConversation_ExactlyLimit(t *testing.T) {
-	// Arrange
-	messages := []*models.Message{
-		{ID: 101},
-		{ID: 102},
-		{ID: 103},
-	}
-
-	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			userID int64,
-		) (bool, error) {
-			return true, nil
-		},
-	}
-
-	fakeMessageRepo := &fakeMessageRepository{
-		ListForConversationFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			before *int64,
-			limit int,
-		) ([]*models.Message, error) {
-			return messages, nil
-		},
-
-		GetReadReceiptsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]*domain.MessageRead, error) {
-			return []*domain.MessageRead{}, nil
-		},
-	}
-
-	service := &MessageService{
-		conversations: fakeConversationRepo,
-		messages:      fakeMessageRepo,
-	}
-
-	// Act
-	result, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		3,
-		nil,
-	)
-
-	// Assert
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if result == nil {
-		t.Fatal("expected result, got nil")
-	}
-
-	if len(result.Messages) != 3 {
-		t.Fatalf(
-			"expected 3 messages, got %d",
-			len(result.Messages),
-		)
-	}
-
-	if result.HasMore {
-		t.Fatal("expected HasMore to be false")
-	}
-
-	if result.NextCursor != nil {
-		t.Fatal("expected NextCursor to be nil")
-	}
-}
-func TestMessageService_ListForConversation_PassesPaginationCursor(t *testing.T) {
-	// Arrange
-
-	before := int64(102)
-
-	fakeConversationRepo := &fakeConversationRepository{
-		IsParticipantFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			userID int64,
-		) (bool, error) {
-			return true, nil
-		},
-	}
-
-	var receivedConversationID int64
-	var receivedBefore *int64
-	var receivedLimit int
-
-	fakeMessageRepo := &fakeMessageRepository{
-		ListForConversationFunc: func(
-			ctx context.Context,
-			conversationID int64,
-			before *int64,
-			limit int,
-		) ([]*models.Message, error) {
-
-			receivedConversationID = conversationID
-			receivedBefore = before
-			receivedLimit = limit
-
-			return []*models.Message{
-				{ID: 101},
-			}, nil
-		},
-
-		GetReadReceiptsFunc: func(
-			ctx context.Context,
-			conversationID int64,
-		) ([]*domain.MessageRead, error) {
-			return []*domain.MessageRead{}, nil
-		},
-	}
-
-	service := &MessageService{
-		conversations: fakeConversationRepo,
-		messages:      fakeMessageRepo,
-	}
-
-	// Act
-
-	_, err := service.ListForConversation(
-		context.Background(),
-		1,
-		1,
-		2,
-		&before,
-	)
-
-	// Assert
-
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if receivedConversationID != 1 {
-		t.Fatalf(
-			"expected conversation ID 1, got %d",
-			receivedConversationID,
-		)
-	}
-
-	if receivedBefore == nil {
-		t.Fatal("expected before cursor, got nil")
-	}
-
-	if *receivedBefore != 102 {
-		t.Fatalf(
-			"expected before cursor 102, got %d",
-			*receivedBefore,
-		)
-	}
-
-	if receivedLimit != 2 {
-		t.Fatalf(
-			"expected limit 2, got %d",
-			receivedLimit,
-		)
+	// Cursor should point to the last item in the truncated list (ID 102)
+	expectedCursor := int64(102)
+	if *result.NextCursor != expectedCursor {
+		t.Fatalf("expected NextCursor %d, got %d", expectedCursor, *result.NextCursor)
 	}
 }

@@ -8,12 +8,15 @@ import (
 	"relay/internal/app"
 	"relay/internal/config"
 	"relay/internal/database"
+	"relay/internal/events"
 	"relay/internal/handlers"
 	"relay/internal/repositories/postgres"
 	"relay/internal/router"
 	"relay/internal/services"
 	"relay/internal/token"
 	"relay/internal/websocket"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -52,10 +55,18 @@ func main() {
 	//Hub Injections
 	hub := websocket.NewHub()
 
+	//Creating a redisClient
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	//Publisher Injections
+	publisher := events.NewRedisPublisher(redisClient)
+
 	// Service Injections
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)
 	conversationService := services.NewConversationService(conversationRepo, userRepo)
-	messageService := services.NewMessageService(messageRepo, conversationRepo, hub)
+	messageService := services.NewMessageService(messageRepo, conversationRepo, publisher)
 	websocketService := services.NewWebsocketService(conversationRepo, messageService, hub)
 
 	// Handler Injections

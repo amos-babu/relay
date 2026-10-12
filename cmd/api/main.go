@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"relay/internal/app"
 	"relay/internal/config"
@@ -60,8 +65,31 @@ func main() {
 		Addr: "localhost:6379",
 	})
 
-	//Publisher Injections
+	//Redis Publisher Injections
 	publisher := events.NewRedisPublisher(redisClient)
+
+	//Redis Subscriber Injections
+	subscriber := events.NewRedisSubscriber(redisClient, hub)
+
+	//Start redis subscriber
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	go func() {
+		if err := subscriber.Subscribe(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("Redis subscriber stopped: %v", err)
+		}
+	}()
+
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			log.Printf("failed to close Redis client: %v", err)
+		}
+	}()
 
 	// Service Injections
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)

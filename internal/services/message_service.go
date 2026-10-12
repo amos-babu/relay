@@ -102,21 +102,10 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		Event:        event,
 	}
 
-	//Marshall the event
-	// payload, err := json.Marshal(broadcast)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	//Publish the event
 	if err := s.publisher.Publish(ctx, broadcast); err != nil {
 		return nil, err
 	}
-
-	// for _, userID := range participants {
-	// 	s.hub.SendToUser(userID, payload)
-	// 	s.publisher.Publish()
-	// }
 
 	return message, nil
 }

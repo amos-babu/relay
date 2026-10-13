@@ -1,6 +1,8 @@
 package websocket
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"net/http"
 	"relay/internal/middleware"
@@ -12,21 +14,25 @@ import (
 type Handler struct {
 	hub *Hub
 
-	OnConnect    func(userID int64)
-	OnDisconnect func(userID int64)
-	onEvent      func(int64, Event)
+	OnConnect    func(userID int64, connectionID string)
+	OnDisconnect func(userID int64, connectionID string)
+	OnHeartbeat  func(userID int64, connectionID string)
+
+	onEvent func(userID int64, event Event)
 }
 
 func NewHandler(
 	hub *Hub,
-	OnConnect func(userID int64),
-	OnDisconnect func(userID int64),
-	onEvent func(int64, Event),
+	onConnect func(userID int64, connectionID string),
+	onDisconnect func(userID int64, connectionID string),
+	onHeartbeat func(userID int64, connectionID string),
+	onEvent func(userID int64, event Event),
 ) *Handler {
 	return &Handler{
 		hub:          hub,
-		OnConnect:    OnConnect,
-		OnDisconnect: OnDisconnect,
+		OnConnect:    onConnect,
+		OnDisconnect: onDisconnect,
+		OnHeartbeat:  onHeartbeat,
 		onEvent:      onEvent,
 	}
 }
@@ -54,15 +60,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	connectionID, err := generateConnectionID()
+	if err != nil {
+		log.Printf("Failed to generate WebSocket connection ID: %v", err)
+		conn.Close()
+		return
+	}
+
 	//Create the Client after authentication
 	client := &Client{
-		UserID: userID,
-		Conn:   conn,
-		Send:   make(chan []byte, 256),
+		UserID:       userID,
+		ConnectionID: connectionID,
+		Conn:         conn,
+		Send:         make(chan []byte, 256),
 
+		OnEvent:      h.onEvent,
 		OnConnect:    h.OnConnect,
 		OnDisconnect: h.OnDisconnect,
-		OnEvent:      h.onEvent,
+		OnHeartbeat:  h.OnHeartbeat,
 	}
 
 	//Register
@@ -70,7 +85,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	//Calling onConnect event functions
 	if client.OnConnect != nil {
-		client.OnConnect(client.UserID)
+		client.OnConnect(client.UserID, client.ConnectionID)
 	}
 
 	go client.writePump()
@@ -80,7 +95,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.hub.Unregister(client)
 
 		if client.OnDisconnect != nil {
-			client.OnDisconnect(client.UserID)
+			client.OnDisconnect(client.UserID, client.ConnectionID)
 		}
 
 		close(client.Send)
@@ -90,4 +105,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	client.readPump()
 
+}
+
+func generateConnectionID() (string, error) {
+	id := make([]byte, 16)
+
+	if _, err := rand.Read(id); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(id), nil
 }

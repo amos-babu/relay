@@ -8,21 +8,36 @@ import (
 	"relay/internal/domain"
 	"relay/internal/repositories"
 	"relay/internal/websocket"
+	"time"
 )
 
-type WebSocketService struct {
-	conversations  repositories.ConversationRepository
-	messageService *MessageService
-	hub            *websocket.Hub
-	publisher      EventPublisher
+type PresenceTracker interface {
+	Connect(ctx context.Context, userID int64, connectionID string) (bool, error)
+	Heartbeat(ctx context.Context, userID int64, connectionID string) error
+	Disconnect(ctx context.Context, userID int64, connectionID string) (bool, error)
 }
 
-func NewWebsocketService(conversations repositories.ConversationRepository, messageService *MessageService, hub *websocket.Hub, publisher EventPublisher) *WebSocketService {
+type WebSocketService struct {
+	conversations   repositories.ConversationRepository
+	messageService  *MessageService
+	hub             *websocket.Hub
+	publisher       EventPublisher
+	presenceTracker PresenceTracker
+}
+
+func NewWebsocketService(
+	conversations repositories.ConversationRepository,
+	messageService *MessageService,
+	hub *websocket.Hub,
+	publisher EventPublisher,
+	presenceTracker PresenceTracker,
+) *WebSocketService {
 	return &WebSocketService{
-		conversations:  conversations,
-		messageService: messageService,
-		hub:            hub,
-		publisher:      publisher,
+		conversations:   conversations,
+		messageService:  messageService,
+		hub:             hub,
+		publisher:       publisher,
+		presenceTracker: presenceTracker,
 	}
 }
 
@@ -178,24 +193,46 @@ func (s *WebSocketService) HandleReadReceipt(userID int64, event websocket.Event
 
 }
 
-func (s *WebSocketService) HandleConnect(userID int64) {
+func (s *WebSocketService) HandleConnect(userID int64, connectionID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	//Broadcast the event to every user
-	s.broadcastPresence(userID, true)
-
-	// log.Printf("user %d connected:", userID)
-}
-
-func (s *WebSocketService) HandleDisconnect(userID int64) {
-	//If there is still a connection return
-	if s.hub.HasConnections(userID) {
+	online, err := s.presenceTracker.Connect(ctx, userID, connectionID)
+	if err != nil {
+		log.Printf(
+			"Failed to register presence for user %d, connection %s: %v",
+			userID,
+			connectionID,
+			err,
+		)
 		return
 	}
 
-	//Broadcast the event to every user
-	s.broadcastPresence(userID, false)
+	// Announce online only when this is the user's first active connection.
+	if online {
+		s.broadcastPresence(userID, true)
+	}
+}
 
-	// log.Printf("user %d disconnected:", userID)
+func (s *WebSocketService) HandleDisconnect(userID int64, connectionID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	offline, err := s.presenceTracker.Disconnect(ctx, userID, connectionID)
+	if err != nil {
+		log.Printf(
+			"Failed to unregister presence for user %d, connection %s: %v",
+			userID,
+			connectionID,
+			err,
+		)
+		return
+	}
+
+	// Announce offline only when no active connections remain.
+	if offline {
+		s.broadcastPresence(userID, false)
+	}
 }
 
 // Showing Offline and Online
@@ -264,4 +301,18 @@ func (s *WebSocketService) broadcastPresence(userID int64, status bool) {
 		)
 	}
 
+}
+
+func (s *WebSocketService) HandleHeartbeat(userID int64, connectionID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := s.presenceTracker.Heartbeat(ctx, userID, connectionID); err != nil {
+		log.Printf(
+			"Failed to refresh presence for user %d, connection %s: %v",
+			userID,
+			connectionID,
+			err,
+		)
+	}
 }

@@ -10,11 +10,14 @@ import (
 
 type Client struct {
 	UserID       int64
+	ConnectionID string
 	Conn         *websocket.Conn
 	Send         chan []byte
+
 	OnEvent      func(userID int64, event Event)
-	OnConnect    func(userID int64)
-	OnDisconnect func(userID int64)
+	OnConnect    func(userID int64, connectionID string)
+	OnDisconnect func(userID int64, connectionID string)
+	OnHeartbeat  func(userID int64, connectionID string)
 }
 
 const (
@@ -28,10 +31,19 @@ func (c *Client) readPump() {
 		time.Now().Add(pongWait),
 	)
 	c.Conn.SetPongHandler(func(string) error {
-		return c.Conn.SetReadDeadline(
+		if err := c.Conn.SetReadDeadline(
 			time.Now().Add(pongWait),
-		)
+		); err != nil {
+			return err
+		}
+
+		if c.OnHeartbeat != nil {
+			c.OnHeartbeat(c.UserID, c.ConnectionID)
+		}
+
+		return nil
 	})
+
 	defer c.Conn.Close()
 	for {
 		_, data, err := c.Conn.ReadMessage()

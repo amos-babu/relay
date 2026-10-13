@@ -71,6 +71,8 @@ func main() {
 	//Redis Subscriber Injections
 	subscriber := events.NewRedisSubscriber(redisClient, hub)
 
+	presenceTracker := events.NewRedisPresenceTracker(redisClient)
+
 	/// Start Redis subscriber with automatic retry.
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
@@ -127,7 +129,7 @@ func main() {
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)
 	conversationService := services.NewConversationService(conversationRepo, userRepo)
 	messageService := services.NewMessageService(messageRepo, conversationRepo, publisher)
-	websocketService := services.NewWebsocketService(conversationRepo, messageService, hub, publisher)
+	websocketService := services.NewWebsocketService(conversationRepo, messageService, hub, publisher, presenceTracker)
 
 	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)
@@ -137,6 +139,7 @@ func main() {
 		hub,
 		websocketService.HandleConnect,
 		websocketService.HandleDisconnect,
+		websocketService.HandleHeartbeat,
 		websocketService.HandleEvent,
 	)
 

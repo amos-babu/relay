@@ -43,30 +43,40 @@ func (s *WebSocketService) HandleEvent(userID int64, event websocket.Event) {
 func (s *WebSocketService) HandleTyping(userID int64, event websocket.Event) {
 	payload, err := json.Marshal(event.Payload)
 	if err != nil {
+		log.Printf("failed to marshal typing payload: %v", err)
 		return
 	}
 
 	var req websocket.TypingRequest
 
 	if err := json.Unmarshal(payload, &req); err != nil {
+		log.Printf("failed to unmarshal typing request: %v", err)
 		return
 	}
 
+	ctx := context.Background()
+
+	// Verify that the sender belongs to the conversation.
 	ok, err := s.conversations.IsParticipant(
-		context.Background(),
+		ctx,
 		req.ConversationID,
 		userID,
 	)
-
 	if err != nil {
+		log.Printf("failed to check typing participant: %v", err)
 		return
 	}
 
 	if !ok {
+		log.Printf(
+			"typing event rejected: user %d is not a participant in conversation %d",
+			userID,
+			req.ConversationID,
+		)
 		return
 	}
 
-	//Build the event
+	// Build the typing event.
 	typing := websocket.TypingEvent{
 		ConversationID: req.ConversationID,
 		UserID:         userID,
@@ -77,29 +87,44 @@ func (s *WebSocketService) HandleTyping(userID int64, event websocket.Event) {
 		Payload: typing,
 	}
 
-	//Marshall the event built
-	message, err := json.Marshal(outgoing)
-	if err != nil {
-		return
-	}
-
-	//Find the conversations Participants
+	// Find all participants in the conversation.
 	participants, err := s.conversations.Participants(
-		context.Background(),
+		ctx,
 		req.ConversationID,
 	)
 	if err != nil {
+		log.Printf(
+			"failed to get participants for conversation %d: %v",
+			req.ConversationID,
+			err,
+		)
 		return
 	}
 
-	//Loop through all the Participants
+	// Exclude the sender from the recipients.
+	recipients := make([]int64, 0, len(participants))
+
 	for _, participantID := range participants {
 		if participantID == userID {
 			continue
 		}
 
-		//Send the event to each user
-		s.hub.SendToUser(participantID, message)
+		recipients = append(recipients, participantID)
+	}
+
+	// Publish through Redis so other Relay instances can deliver the event.
+	broadcast := websocket.BroadcastEvent{
+		RecipientIDs: recipients,
+		Event:        outgoing,
+	}
+
+	if err := s.publisher.Publish(ctx, broadcast); err != nil {
+		log.Printf(
+			"failed to publish typing event for user %d in conversation %d: %v",
+			userID,
+			req.ConversationID,
+			err,
+		)
 	}
 }
 
@@ -173,9 +198,48 @@ func (s *WebSocketService) HandleDisconnect(userID int64) {
 	// log.Printf("user %d disconnected:", userID)
 }
 
-// Helper function for connect and disconnect events
+// Showing Offline and Online
 func (s *WebSocketService) broadcastPresence(userID int64, status bool) {
-	//Build the event
+	ctx := context.Background()
+
+	// Find all conversations belonging to this user.
+	conversations, err := s.conversations.ListForUser(ctx, userID)
+	if err != nil {
+		log.Printf("failed to list conversations for user %d: %v", userID, err)
+		return
+	}
+
+	// Collect unique participants, excluding the user whose status changed.
+	recipientSet := make(map[int64]struct{})
+
+	for _, conversation := range conversations {
+		participants, err := s.conversations.Participants(ctx, conversation.ID)
+		if err != nil {
+			log.Printf(
+				"failed to get participants for conversation %d: %v",
+				conversation.ID,
+				err,
+			)
+			return
+		}
+
+		for _, participantID := range participants {
+			if participantID == userID {
+				continue
+			}
+
+			recipientSet[participantID] = struct{}{}
+		}
+	}
+
+	// Convert the set into a slice for the Redis broadcast event.
+	recipients := make([]int64, 0, len(recipientSet))
+
+	for recipientID := range recipientSet {
+		recipients = append(recipients, recipientID)
+	}
+
+	// Build the presence event.
 	presence := websocket.PresenceEvent{
 		UserID: userID,
 		Online: status,
@@ -187,12 +251,17 @@ func (s *WebSocketService) broadcastPresence(userID int64, status bool) {
 	}
 
 	broadcast := websocket.BroadcastEvent{
-		RecipientIDs: []int64{}, // Temporary; we'll target conversation participants next.
+		RecipientIDs: recipients,
 		Event:        event,
 	}
 
-	//Publish the event throught redis to other instances
-	if err := s.publisher.Publish(context.Background(), broadcast); err != nil {
-		log.Printf("failed to publish presence event for user %d: %v", userID, err)
+	// Publish the event so every Relay instance can deliver it locally.
+	if err := s.publisher.Publish(ctx, broadcast); err != nil {
+		log.Printf(
+			"failed to publish presence event for user %d: %v",
+			userID,
+			err,
+		)
 	}
+
 }

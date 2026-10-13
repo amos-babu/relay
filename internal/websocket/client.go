@@ -51,6 +51,13 @@ func (c *Client) readPump() {
 			return
 		}
 
+		log.Printf(
+			"WebSocket received from user_id=%d: type=%q payload=%s",
+			c.UserID,
+			event.Type,
+			data,
+		)
+
 		c.OnEvent(c.UserID, event)
 	}
 }

@@ -102,7 +102,7 @@ func (s *MessageService) Send(ctx context.Context, conversationID int64, senderI
 		Event:        event,
 	}
 
-	//Publish the event
+	//Publish the event through redis to other instances
 	if err := s.publisher.Publish(ctx, broadcast); err != nil {
 		return nil, err
 	}
@@ -213,6 +213,7 @@ func (s *MessageService) MarkAsRead(ctx context.Context, messageID int64, conver
 		Event:        event,
 	}
 
+	//Publish the event through redis to other instances
 	if err := s.publisher.Publish(ctx, broadcast); err != nil {
 		return time.Time{}, err
 	}

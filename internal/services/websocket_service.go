@@ -14,13 +14,15 @@ type WebSocketService struct {
 	conversations  repositories.ConversationRepository
 	messageService *MessageService
 	hub            *websocket.Hub
+	publisher      EventPublisher
 }
 
-func NewWebsocketService(conversations repositories.ConversationRepository, messageService *MessageService, hub *websocket.Hub) *WebSocketService {
+func NewWebsocketService(conversations repositories.ConversationRepository, messageService *MessageService, hub *websocket.Hub, publisher EventPublisher) *WebSocketService {
 	return &WebSocketService{
 		conversations:  conversations,
 		messageService: messageService,
 		hub:            hub,
+		publisher:      publisher,
 	}
 }
 
@@ -184,12 +186,13 @@ func (s *WebSocketService) broadcastPresence(userID int64, status bool) {
 		Payload: presence,
 	}
 
-	//Marshall the event built
-	message, err := json.Marshal(event)
-	if err != nil {
-		return
+	broadcast := websocket.BroadcastEvent{
+		RecipientIDs: []int64{}, // Temporary; we'll target conversation participants next.
+		Event:        event,
 	}
 
-	//Broadcast the event to every user
-	s.hub.Broadcast(message)
+	//Publish the event throught redis to other instances
+	if err := s.publisher.Publish(context.Background(), broadcast); err != nil {
+		log.Printf("failed to publish presence event for user %d: %v", userID, err)
+	}
 }

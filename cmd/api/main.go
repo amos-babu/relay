@@ -95,7 +95,7 @@ func main() {
 	userService := services.NewUserService(userRepo, tokenService, refreshToken)
 	conversationService := services.NewConversationService(conversationRepo, userRepo)
 	messageService := services.NewMessageService(messageRepo, conversationRepo, publisher)
-	websocketService := services.NewWebsocketService(conversationRepo, messageService, hub)
+	websocketService := services.NewWebsocketService(conversationRepo, messageService, hub, publisher)
 
 	// Handler Injections
 	userHandler := handlers.NewUserHandler(userService)

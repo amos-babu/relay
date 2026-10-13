@@ -38,12 +38,14 @@ func (s *RedisSubscriber) Subscribe(ctx context.Context) error {
 
 	for {
 		select {
-		case <-ctx.Done(): // Listens for cancellation returning an error and exiting cleanly
+		case <-ctx.Done():
+			log.Printf("Redis subscriber shutting down: %v", ctx.Err())
 			return ctx.Err()
 
 		case msg, ok := <-ch:
 			if !ok {
-				return nil //Exits gracefully if the channel is closed
+				log.Println("Redis Pub/Sub message channel closed")
+				return nil
 			}
 
 			//Parsing the broadcast event

@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"relay/internal/app"
 	"relay/internal/config"
@@ -71,7 +71,7 @@ func main() {
 	//Redis Subscriber Injections
 	subscriber := events.NewRedisSubscriber(redisClient, hub)
 
-	//Start redis subscriber
+	/// Start Redis subscriber with automatic retry.
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -80,8 +80,40 @@ func main() {
 	defer stop()
 
 	go func() {
-		if err := subscriber.Subscribe(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("Redis subscriber stopped: %v", err)
+		for {
+			// Stop retrying when the application is shutting down.
+			if ctx.Err() != nil {
+				return
+			}
+
+			log.Println("Starting Redis subscriber...")
+
+			err := subscriber.Subscribe(ctx)
+
+			// Exit cleanly when the application shuts down.
+			if ctx.Err() != nil {
+				return
+			}
+
+			if err != nil {
+				log.Printf("Redis subscriber stopped with error: %v", err)
+			} else {
+				log.Println("Redis subscriber stopped unexpectedly")
+			}
+
+			// Wait before trying again.
+			log.Println("Retrying Redis subscriber in 2 seconds...")
+
+			timer := time.NewTimer(2 * time.Second)
+
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+
+			case <-timer.C:
+				// Retry the subscription.
+			}
 		}
 	}()
 

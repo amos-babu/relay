@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"relay/internal/domain"
+	"relay/internal/events"
 	"relay/internal/repositories"
 	"relay/internal/websocket"
 	"time"
@@ -303,16 +304,61 @@ func (s *WebSocketService) broadcastPresence(userID int64, status bool) {
 
 }
 
-func (s *WebSocketService) HandleHeartbeat(userID int64, connectionID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func (s *WebSocketService) HandleHeartbeat(
+	userID int64,
+	connectionID string,
+) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		3*time.Second,
+	)
 	defer cancel()
 
-	if err := s.presenceTracker.Heartbeat(ctx, userID, connectionID); err != nil {
+	err := s.presenceTracker.Heartbeat(ctx, userID, connectionID)
+	if err == nil {
+		return
+	}
+
+	// Only attempt recovery when the connection record is missing.
+	if errors.Is(err, events.ErrConnectionNotRegistered) {
 		log.Printf(
-			"Failed to refresh presence for user %d, connection %s: %v",
+			"Presence record missing for user %d, connection %s; attempting recovery",
 			userID,
 			connectionID,
-			err,
 		)
+
+		online, reconnectErr := s.presenceTracker.Connect(
+			ctx,
+			userID,
+			connectionID,
+		)
+		if reconnectErr != nil {
+			log.Printf(
+				"Failed to recover presence for user %d, connection %s: %v",
+				userID,
+				connectionID,
+				reconnectErr,
+			)
+			return
+		}
+
+		if online {
+			s.broadcastPresence(userID, true)
+		}
+
+		log.Printf(
+			"Recovered presence for user %d, connection %s",
+			userID,
+			connectionID,
+		)
+		return
 	}
+
+	// Redis may be unavailable. Don't assume recovery succeeded.
+	log.Printf(
+		"Failed to refresh presence for user %d, connection %s: %v",
+		userID,
+		connectionID,
+		err,
+	)
 }

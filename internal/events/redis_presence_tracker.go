@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +12,10 @@ import (
 const (
 	presenceKeyPrefix = "relay:presence:"
 	presenceTTL       = 2 * time.Minute
+)
+
+var ErrConnectionNotRegistered = errors.New(
+	"presence connection is not registered",
 )
 
 type RedisPresenceTracker struct {
@@ -128,7 +133,8 @@ func (t *RedisPresenceTracker) Heartbeat(
 
 	if result == 0 {
 		return fmt.Errorf(
-			"connection %q is not registered for user %d",
+			"%w: connection %q for user %d",
+			ErrConnectionNotRegistered,
 			connectionID,
 			userID,
 		)

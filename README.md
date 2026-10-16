@@ -215,35 +215,59 @@ Responsible for:
 
 ## Distributed Event Architecture
 
-Each Relay instance has its own in-memory WebSocket Hub. Redis Pub/Sub
-connects those otherwise separate Hubs by distributing broadcast events.
+Relay uses **Redis Pub/Sub** to distribute live events between multiple
+Relay server instances. Each instance has its own in-memory WebSocket
+Hub, so a Hub cannot directly reach clients connected to another
+instance. Redis provides the event-broadcast path between those Hubs.
 
 ```text
-Client Alice
-    │
-    ▼
-Relay Instance A ── saves message ──> PostgreSQL
-    │
-    └── EventPublisher ── PUBLISH relay:events ──> Redis
-                                                   │
-                               ┌───────────────────┴──────────────────┐
-                               ▼                                      ▼
-                         Subscriber A                           Subscriber B
-                               │                                      │
-                               ▼                                      ▼
-                            Hub A                                  Hub B
-                                                                      │
-                                                                      ▼
-                                                                Client Bob
+                         RELAY DISTRIBUTED ARCHITECTURE
+
+ Client Alice                                                     Client Bob
+     │                                                                ▲
+     ▼                                                                │
+┌──────────────────────┐                              ┌──────────────────────┐
+│   Relay Instance A   │                              │   Relay Instance B   │
+│                      │                              │                      │
+│  HTTP / WS Handlers  │                              │  HTTP / WS Handlers  │
+│          │           │                              │          ▲           │
+│          ▼           │                              │          │           │
+│     MessageService ──┼── publish event ──┐           │   Redis Subscriber  │
+│          │           │                  │           │          │           │
+│          ▼           │                  ▼           │          ▼           │
+│     PostgreSQL       │          ┌────────────────┐  │       Hub B          │
+│   (persistent data)  │          │     REDIS      │  │          ▲           │
+│                      │          │   Pub/Sub      │  │          │           │
+│       Hub A          │          │ relay:events   │  │   WebSocket Clients  │
+│          ▲           │          └───────┬────────┘  │                      │
+│          │           │                  │           │                      │
+│   Redis Subscriber ◄─┼──────────────────┘           │                      │
+└──────────────────────┘                              └──────────────────────┘
 ```
 
-The publisher uses the `relay:events` Redis channel. Events include
-recipient IDs so each instance's Hub can deliver the event only to
-matching local connections.
+### Event flow
 
-**Important:** Redis Pub/Sub is transient delivery, not a durable queue.
-If an instance is disconnected from Redis, it can miss live events.
-Persistent messages and read state remain available from PostgreSQL.
+1. A client sends a message to Relay Instance A.
+2. `MessageService` saves the message through the repository to
+   PostgreSQL.
+3. The service publishes a `BroadcastEvent` through the `EventPublisher`
+   interface. The Redis publisher serializes the event as JSON and
+   publishes it to the `relay:events` channel.
+4. Each connected Relay instance's Redis subscriber receives the event.
+5. The subscriber forwards the event to its local WebSocket Hub.
+6. Each Hub sends the event to matching recipient connections on that
+   instance. For example, Bob can receive Alice's message even when Bob
+   is connected to Instance B.
+
+The event contains recipient IDs, allowing each Hub to route the event
+to the appropriate local users. The Redis subscriber and publisher are
+separate from the WebSocket Hub: Redis carries events between instances,
+while each Hub delivers them to its own connected clients.
+
+**Important limitation:** Redis Pub/Sub is transient; it is not a durable
+message queue. A subscriber that is disconnected can miss live events.
+The persisted message and read state remain available from PostgreSQL,
+which is still Relay's source of truth.
 
 ---
 
@@ -370,7 +394,8 @@ Request IDs make it easier to trace an individual request through logs.
 - **Go**
 - **Chi** HTTP router
 - **PostgreSQL**
-- **Redis Pub/Sub**
+- **Redis** — Pub/Sub transport for distributing live events between
+  Relay instances
 - **Docker**
 - **Gorilla WebSocket**
 - **JWT**
@@ -455,6 +480,13 @@ JWT_SECRET=your_secret
 Use your project's actual configuration variable names if they differ.
 
 ### Start PostgreSQL and Redis
+
+Both services are required by the current setup:
+
+- **PostgreSQL** stores users, conversations, messages, and persistent
+  read state.
+- **Redis** distributes live broadcast events between Relay instances
+  through the `relay:events` Pub/Sub channel.
 
 Start the PostgreSQL and Redis containers before starting Relay. The
 current Redis connection is configured in `cmd/api/main.go` as

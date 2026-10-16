@@ -3,11 +3,15 @@
 Relay is a real-time messaging backend built with Go. It provides
 authenticated REST APIs for users and conversations, persistent
 messaging with PostgreSQL, and WebSocket-based real-time communication.
+Redis Pub/Sub distributes live events between Relay server instances so
+users connected to different instances can receive events.
 
-The project is designed around a simple principle:
+The project is designed around two principles:
 
-> **PostgreSQL is the source of truth for persistent state, while
-> WebSockets deliver live events to connected clients.**
+> **PostgreSQL is the source of truth for persistent state.**
+>
+> **Redis distributes live events between instances; WebSockets deliver
+> those events to connected clients.**
 
 ---
 
@@ -41,6 +45,8 @@ The project is designed around a simple principle:
 - Conversation-level authorization
 - Real-time message delivery through WebSockets
 - Support for multiple active WebSocket connections per user
+- Redis Pub/Sub event distribution across Relay instances
+- Cross-instance delivery for message, read-receipt, typing, and presence events
 
 ### Real-Time Features
 
@@ -182,14 +188,62 @@ Responsible for:
 - Persistence
 - Database-specific operations
 
+#### Event publisher and Redis subscriber
+
+The message service depends on an `EventPublisher` interface rather than
+publishing directly to a particular WebSocket Hub.
+
+- The Redis publisher JSON-encodes broadcast events and publishes them
+  to the `relay:events` channel.
+- Each Relay instance subscribes to that channel.
+- A subscriber forwards received events to that instance's local Hub.
+- The local Hub routes events to matching connected users.
+
+This allows a message created on one Relay instance to reach a recipient
+connected to another instance.
+
 #### WebSocket Hub
 
 Responsible for:
 
-- Tracking active WebSocket clients
+- Tracking active WebSocket clients local to an instance
 - Supporting multiple connections per user
 - Routing events to connected users
 - Avoiding new connections for every event
+
+---
+
+## Distributed Event Architecture
+
+Each Relay instance has its own in-memory WebSocket Hub. Redis Pub/Sub
+connects those otherwise separate Hubs by distributing broadcast events.
+
+```text
+Client Alice
+    │
+    ▼
+Relay Instance A ── saves message ──> PostgreSQL
+    │
+    └── EventPublisher ── PUBLISH relay:events ──> Redis
+                                                   │
+                               ┌───────────────────┴──────────────────┐
+                               ▼                                      ▼
+                         Subscriber A                           Subscriber B
+                               │                                      │
+                               ▼                                      ▼
+                            Hub A                                  Hub B
+                                                                      │
+                                                                      ▼
+                                                                Client Bob
+```
+
+The publisher uses the `relay:events` Redis channel. Events include
+recipient IDs so each instance's Hub can deliver the event only to
+matching local connections.
+
+**Important:** Redis Pub/Sub is transient delivery, not a durable queue.
+If an instance is disconnected from Redis, it can miss live events.
+Persistent messages and read state remain available from PostgreSQL.
 
 ---
 
@@ -316,6 +370,7 @@ Request IDs make it easier to trace an individual request through logs.
 - **Go**
 - **Chi** HTTP router
 - **PostgreSQL**
+- **Redis Pub/Sub**
 - **Docker**
 - **Gorilla WebSocket**
 - **JWT**
@@ -369,6 +424,7 @@ Install:
 - Go
 - Docker
 - PostgreSQL (or run PostgreSQL through Docker)
+- Redis (or run Redis through Docker)
 
 ### Clone the project
 
@@ -398,10 +454,12 @@ JWT_SECRET=your_secret
 
 Use your project's actual configuration variable names if they differ.
 
-### Start PostgreSQL
+### Start PostgreSQL and Redis
 
-If PostgreSQL is running through Docker, start the database container
-before starting Relay.
+Start the PostgreSQL and Redis containers before starting Relay. The
+current Redis connection is configured in `cmd/api/main.go` as
+`localhost:6379`; move this into environment-based configuration before
+deploying to other environments.
 
 ### Run migrations
 
@@ -422,6 +480,12 @@ http://localhost:8080
 ---
 
 ## Testing
+
+The project has unit tests for message-service behavior and HTTP handlers.
+Redis cross-instance event paths have also been exercised for message,
+read-receipt, typing, and presence events. For production confidence, add
+automated integration tests that start multiple Relay instances against
+the same PostgreSQL and Redis services.
 
 Run the complete Go test suite:
 
@@ -668,7 +732,15 @@ Core real-time messaging functionality is implemented and working:
 - [x] HTTP-triggered real-time read receipts
 - [x] Multiple connections per user
 - [x] Request ID logging
-- [x] Automated Go test execution
+- [x] MessageService unit tests
+- [x] HTTP handler tests
+- [x] Redis event publisher and subscriber wiring
+- [x] Redis Pub/Sub channel (`relay:events`)
+- [x] Cross-instance delivery for message events
+- [x] Cross-instance delivery for read receipts
+- [x] Cross-instance delivery for typing indicators
+- [x] Cross-instance delivery for presence events
+- [x] Automated Go test execution (`go test ./...`)
 
 ---
 
@@ -679,16 +751,17 @@ Potential future work includes:
 - Last-seen timestamps
 - Unread message counts
 - Message delivery states (`sent`, `delivered`, `read`)
-- WebSocket heartbeat/ping-pong handling
-- Automatic client reconnection
-- Better offline synchronization
-- Message pagination
-- Rate limiting
-- Redis/pub-sub for multi-server WebSocket deployments
-- Horizontal scaling
-- Production observability and metrics
-- Automated integration and WebSocket tests
-- API documentation with OpenAPI/Swagger
+- Add retry/reconnection handling for the Redis subscriber; currently a subscriber error can stop that subscriber
+- Move the Redis address and other infrastructure settings into environment-based configuration
+- Add stronger integration tests that exercise multiple Relay instances end to end
+- Improve offline synchronization and document client resynchronization behavior
+- Add/verify WebSocket heartbeat and ping-pong handling
+- Add automatic client reconnection
+- Add message pagination
+- Add rate limiting
+- Add production observability, metrics, and health checks for Redis
+- Consider Redis Streams or an outbox pattern if durable event delivery becomes a requirement
+- Add API documentation with OpenAPI/Swagger
 
 ---
 

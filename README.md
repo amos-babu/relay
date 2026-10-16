@@ -6,17 +6,6 @@ messaging with PostgreSQL, and WebSocket-based real-time communication.
 Redis Pub/Sub distributes live events between Relay server instances so
 users connected to different instances can receive events.
 
-The project is designed around two principles:
-
-> **PostgreSQL is the source of truth for persistent state.**
->
-> **Redis distributes live events between instances; WebSockets deliver
-> those events to connected clients.**
-
----
-
-## Features
-
 ### Authentication & Users
 
 - User registration
@@ -223,7 +212,7 @@ instance. Redis provides the event-broadcast path between those Hubs.
 ```text
                          RELAY DISTRIBUTED ARCHITECTURE
 
- Client Alice                                                     Client Bob
+ Client A                                                         Client B
      │                                                                ▲
      ▼                                                                │
 ┌──────────────────────┐                              ┌──────────────────────┐
@@ -524,18 +513,6 @@ Run the complete Go test suite:
 ```bash
 go test ./...
 ```
-
-A successful run should look similar to:
-
-```text
-?       relay/cmd/api
-?       relay/internal/app
-?       relay/internal/config
-ok      relay/internal/database
-?       relay/internal/domain
-...
-```
-
 ---
 
 ## API Overview
@@ -802,9 +779,3 @@ Potential future work includes:
 MIT
 
 ---
-
-## Author
-
-Built as a Go-based real-time messaging backend with a focus on clean
-architecture, persistent state, authentication, and real-time
-communication.

@@ -15,6 +15,7 @@ import (
 type fakeConversationRepository struct {
 	IsParticipantFunc func(ctx context.Context, conversationID, userID int64) (bool, error)
 	ParticipantsFunc  func(ctx context.Context, conversationID int64) ([]int64, error)
+	ListForUserFunc   func(ctx context.Context, userID int64) ([]*models.Conversation, error)
 }
 
 type fakeMessageRepository struct {
@@ -62,6 +63,10 @@ func (f *fakeConversationRepository) ListForUser(
 	ctx context.Context,
 	userID int64,
 ) ([]*models.Conversation, error) {
+	if f.ListForUserFunc != nil {
+		return f.ListForUserFunc(ctx, userID)
+	}
+
 	panic("ListForUser should not be called")
 }
 
